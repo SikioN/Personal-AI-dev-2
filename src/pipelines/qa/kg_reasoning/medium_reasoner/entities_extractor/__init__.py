@@ -1,0 +1,1 @@
+from .EntitiesExtractor import EntitiesExtractorConfig, EntitiesExtractor

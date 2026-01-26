@@ -1,0 +1,176 @@
+services:
+
+  neo4j:
+    image: neo4j:5.21.0-enterprise
+    container_name: ${NEO4J_CNTNAME}
+    hostname: ${NEO4J_HOST}
+    ports:
+      - ${NEO4J_UI_EXTERNAL_PORT}:7474
+      - ${NEO4J_EXTERNAL_PORT}:7687
+    environment:
+      - NEO4J_AUTH=${NEO4j_AUTH_USER}/${NEO4j_AUTH_PWD}
+      - NEO4J_ACCEPT_LICENSE_AGREEMENT=yes
+    volumes:
+      - ${NEO4J_LOCAL_VOLUME}:/data
+    deploy:
+      resources:
+        limits:
+          cpus: '8'
+          memory: 24G
+        reservations:
+          cpus: '4'
+          memory: 8G
+
+  mongo_cache:
+    image: mongo:latest
+    container_name: ${MONGO_CNTNAME}
+    hostname: ${MONGO_HOST}
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_AUTH_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_AUTH_PASS}
+    ports:
+      - "${MONGO_EXTERNAL_PORT}:27017"
+    volumes:
+      - ${MONGO_LOCAL_VOLUME}:/data/db/
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '8'
+    #       memory: 40G
+    #     reservations:
+    #       cpus: '4'
+    #       memory: 5G
+
+  mongo_ui:
+    image: mongo-express:latest
+    container_name: ${MONGO_UI_CNTNAME}
+    hostname: ${MONGO_UI_HOST}
+    environment:
+      ME_CONFIG_BASICAUTH_USERNAME: me_user
+      ME_CONFIG_BASICAUTH_PASSWORD: me_pass
+      ME_CONFIG_MONGODB_ADMINUSERNAME: ${MONGO_AUTH_USER}
+      ME_CONFIG_MONGODB_ADMINPASSWORD: ${MONGO_AUTH_PASS}
+      ME_CONFIG_MONGODB_SERVER: ${MONGO_HOST}
+    depends_on:
+      - mongo_cache
+    ports:
+      - ${MONGO_UI_EXTERNAL_PORT}:8081
+
+  redis_cache:
+    image: redis:latest
+    container_name: ${REDIS_CNTNAME}
+    hostname: ${REDIS_HOST}
+    environment:
+      - REDIS_PASSWORD=my_redis_password
+      - REDIS_USER=${REDIS_AUTH_USER}
+      - REDIS_USER_PASSWORD=${REDIS_AUTH_PASS}
+    ports:
+      - "${REDIS_EXTERNAL_PORT}:6379"
+    volumes:
+      - ${REDIS_LOCAL_VOLUME}:/data
+      - ${REDIS_CONFIG}:/usr/local/etc/redis
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '8'
+    #       memory: 10G
+    #     reservations:
+    #       cpus: '4'
+    #       memory: 5G
+
+  redis_ui:
+    image: redis/redisinsight:latest
+    container_name: ${REDIS_UI_CNTNAME}
+    hostname: ${REDIS_UI_HOST}
+    depends_on:
+      - redis_cache
+    ports:
+      - ${REDIS_UI_EXTERNAL_PORT}:5540
+
+  milvus:
+    image: milvusdb/milvus:v2.5.8
+    container_name: ${MILVUS_CNTNAME}
+    hostname: ${MILVUS_HOST}
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      - ETCD_USE_EMBED=true
+      - ETCD_DATA_DIR=/var/lib/milvus/etcd
+      - ETCD_CONFIG_PATH=/milvus/configs/embedEtcd.yaml
+      - COMMON_STORAGETYPE=local
+    ports:
+      - ${MILVUS_EXTERNAL_PORT1}:19530
+      - ${MILVUS_EXTERNAL_PORT2}:2379
+      - ${MILVUS_UI_EXTERNAL_PORT}:9091
+    volumes:
+      - ${MILVUS_LOCAL_VOLUME}/data:/var/lib/milvus
+      - ${MILVUS_CONFIG}/embedEtcd.yaml:/milvus/configs/embedEtcd.yaml
+      - ${MILVUS_CONFIG}/user.yaml:/milvus/configs/user.yaml
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      start_period: 90s
+      timeout: 20s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '8'
+          memory: 24G
+        reservations:
+          cpus: '4'
+          memory: 8G
+
+  ollama_agent:
+    image: ollama/ollama:latest
+    container_name: ${OLLAMA_CNTNAME}
+    hostname: ${OLLAMA_HOST}
+    ports:
+      - "${OLLAMA_EXTERNAL_PORT}:11434"
+    environment:
+      - OLLAMA_DEBUG=1
+    volumes:
+      - ${OLLAMA_LOCAL_VOLUME}:/root/.ollama
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+        reservations:
+          cpus: '2'
+          memory: 4G
+          devices:
+            - driver: nvidia
+              device_ids: ['1']
+              capabilities: [gpu]
+
+  workspace:
+    image: m.menschikov/workspace:v2
+    container_name: ${WORKSPACE_CNTNAME}
+    hostname: ${WORKSPACE_HOST}
+    network_mode: "host"
+    volumes:
+      - ${EXTERNAL_SPEC_KG_PATH}:${INTERNAL_SPEC_KG_PATH}
+      - ${EXTERNAL_SPEC_QADS_PATH}:${INTERNAL_SPEC_QADS_PATH}
+      - ${EXTERNAL_NOTEBOOKS_PATH}:${INTERNAL_NOTEBOOKS_PATH}
+      - ${EXTERNAL_SRC_PATH}:${INTERNAL_SRC_PATH}
+      - ${EXTERNAL_MODELS_PATH}:${INTERNAL_MODELS_PATH}
+    depends_on:
+      - neo4j
+      - mongo_cache
+      - redis_cache
+      - milvus
+    #   - ollama_agent
+    deploy:
+      resources:
+        limits:
+          cpus: '8'
+          memory: 32G
+        reservations:
+          cpus: '4'
+          memory: 24G
+          devices:
+            - driver: nvidia
+              device_ids: ['1']
+              capabilities: [gpu]

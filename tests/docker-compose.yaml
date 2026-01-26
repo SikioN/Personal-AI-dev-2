@@ -1,0 +1,197 @@
+services:
+  neo4j:
+    container_name: personalai_test_neo4j
+    image: neo4j:5.21.0-enterprise
+    hostname: localhost
+    # networks:
+    #   - tests_network
+    ports:
+      - 7470:7474
+      - 7680:7687
+    environment:
+      - NEO4J_AUTH=neo4j/password
+      - NEO4J_ACCEPT_LICENSE_AGREEMENT=yes
+    volumes:
+      - ./volumes/neo4j:/data
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 8G
+        reservations:
+          cpus: '1'
+          memory: 4G
+
+  aerospike:
+    container_name: personalai_test_aerospike
+    hostname: personalai_test_aerospike
+    image: m.menschikov/aerospike:ee-7.1.0.6_1
+    # networks:
+    #   - tests_network
+    ports:
+      - 3000:3000
+      - 3001:3001
+      - 3002:3002
+    volumes:
+      - ./volumes/aerospike:/opt/aerospike/data
+      - ../configs/aerospike:/etc/aerospike
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 8G
+        reservations:
+          cpus: '1'
+          memory: 4G
+
+  mongo_cache:
+    container_name: personalai_test_mongo
+    image: mongo:7.0.9
+    hostname: localhost #personalai_test_mongo
+    # networks:
+    #   - tests_network
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=user
+      - MONGO_INITDB_ROOT_PASSWORD=pass
+    ports:
+      - 27010:27017
+    volumes:
+      - ./volumes/mongo:/data/db
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 8G
+        reservations:
+          cpus: '1'
+          memory: 4G
+    tty: true
+    stdin_open: true
+
+  mongo_ui:
+    image: mongo-express:latest
+    container_name: personalai_mongo_ui
+    hostname: personalai_mongo_ui #personalai_mongo_ui
+    # networks:
+    #   - tests_network
+    environment:
+      ME_CONFIG_BASICAUTH_USERNAME: me_user
+      ME_CONFIG_BASICAUTH_PASSWORD: me_pass
+      ME_CONFIG_MONGODB_ADMINUSERNAME: user
+      ME_CONFIG_MONGODB_ADMINPASSWORD: pass
+      ME_CONFIG_MONGODB_SERVER: personalai_test_mongo
+    depends_on:
+      - mongo_cache
+    ports:
+      - "8081:8081"
+
+  redis_cache:
+    container_name: personalai_test_redis
+    image: redis:latest
+    hostname: localhost #personalai_test_redis
+    # networks:
+    #   - tests_network
+    command: redis-server /usr/local/etc/redis/redis.conf
+    environment:
+      - REDIS_PASSWORD=my_redis_password
+      - REDIS_USER=my_user
+      - REDIS_USER_PASSWORD=my_user_password
+    ports:
+      - 6370:6379
+    volumes:
+      - ../configs/redis/redis.conf:/usr/local/etc/redis/redis.conf
+      - ./volumes/redis:/data
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 8G
+        reservations:
+          cpus: '1'
+          memory: 4G
+    tty: true
+    stdin_open: true
+
+  redis_ui:
+    image: redis/redisinsight:latest
+    container_name: personalai_redis_ui
+    hostname: personalai_redis_ui
+    # networks:
+    #   - tests_network
+    depends_on:
+      - redis_cache
+    ports:
+      - "5540:5540"
+
+  milvus:
+    image: milvusdb/milvus:v2.5.8
+    container_name: personalai_test_milvus
+    hostname: localhost
+    # networks:
+    #   - tests_network
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      - ETCD_USE_EMBED=true
+      - ETCD_DATA_DIR=/var/lib/milvus/etcd
+      - ETCD_CONFIG_PATH=/milvus/configs/embedEtcd.yaml
+      - COMMON_STORAGETYPE=local
+    ports:
+      - 19520:19530
+      - 2370:2379
+      - 9080:9091
+    volumes:
+      - ./volumes/milvus/data:/var/lib/milvus
+      - ../configs/milvus/embedEtcd.yaml:/milvus/configs/embedEtcd.yaml
+      - ../configs/milvus/user.yaml:/milvus/configs/user.yaml
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      start_period: 90s
+      timeout: 20s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 10G
+        reservations:
+          cpus: '1'
+          memory: 5G
+
+  isolated_environment:
+    image: m.menschikov/workspace:v2
+    container_name: personalai_test_isolated_env
+    hostname: test_isolated_env
+    network_mode: "host"
+    # networks:
+    #   - tests_network
+    volumes:
+      - ../src:/home/workspace/src
+      - ../data:/home/workspace/data
+      - ../deployment:/home/workspace/deployment
+      - ../models:/home/workspace/models
+      - ../tests:/home/workspace/tests
+      #- ../configs:/home/workspace/configs
+    depends_on:
+      - neo4j
+      - redis_cache
+      - mongo_cache
+      - milvus
+    deploy:
+      resources:
+        limits:
+          cpus: '16'
+          memory: 32G
+        reservations:
+          cpus: '8'
+          memory: 24G
+          devices:
+            - driver: nvidia
+              device_ids: ['2']
+              capabilities: [gpu]
+
+# networks:
+#   tests_network:
+#    name: personalai_mmenschikov_tests_network

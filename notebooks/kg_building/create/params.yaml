@@ -1,0 +1,251 @@
+DATASET_NAME: 'trivia_qa_rcwikipedia_validation' # TO CHANGE
+KNOWLEDGE_GRAPH_NAME: 'llama318b_210525_v2prompts' # TO CHANGE
+
+# SERVER PATHS
+BASE_PERSONALAI_PATH: '/home/m.menschikov/workspace/personal_ai/Personal-AI' # TO CHANGE
+BASE_DATA_PATH: '/mnt/data/m.menschikov'
+OLLAMA_MODELS_PATH: '/home/m.menschikov/workspace/personal_ai/ollama_volume' # TO CHANGE
+
+INIT_STRUCT: True # !!! PAY ATTENTION !!!
+
+MEM_PIPELINE_CONFIG:
+  lang: 'en' # DONT CHANGE
+
+  llm_caching: True # DONT CHANGE
+  cache_need_to_clear: False # !!! PAY ATTENTION !!!
+  cache_db_info:
+      db: 'memorize_db'
+      table: None
+
+  agent_config:
+    vendor: ollama
+    credentials:
+      model: llama3.1:8b
+    ext_params:
+      host: localhost
+      keep_alive: -1
+      port: 11439
+      timeout: 560
+    gen_strategy:
+      num_predict: 2048
+      seed: 42
+      temperature: 0.0
+      top_k: 1
+
+  extractor_stage:
+    extract_triplets:
+      prompts_version: 'v2'
+    extract_thesises:
+      prompts_version: 'v2'
+
+  updator_stage:
+    delete_obsolete_info: False # DONT CHANGE
+    replace_simple_triplets:
+      prompts_version: 'v1' # DONT CHANGE
+    replace_thesis_triplets:
+      prompts_version: 'v1' # DONT CHANGE
+
+  persistent_cache_config:
+    vendor: 'mongo'
+    host: 'localhost'
+    port: 27035 # TO CHANGE
+    params:
+      username: 'user'
+      password: 'pass'
+      max_storage: -1
+
+  ram_cache_config:
+    vendor: 'redis'
+    host: 'localhost'
+    port: 6397 # TO CHANGE
+    params:
+      ss_name: 'sorted_node_pairs'
+      hs_name: 'node_pairs'
+      max_storage: 50000000
+      username: 'my_user'
+      password: 'my_user_password'
+    db_configuration: 'redis'
+
+KG_DB_CONFIGS:
+  need_to_clear: False # !!! PAY ATTENTION !!!
+
+  graphdb_config:
+    vendor: 'neo4j'
+    host: 'localhost'
+    port: 7705 # TO CHANGE
+    params:
+      user: 'neo4j'
+      pwd: 'password'
+    db_info:
+      db: 'knowledgegraphdb'
+      table: 'knowledgegraphtable'
+
+  nodesdb_config:
+    vendor: 'milvus'
+    conn:
+      host: 'localhost'
+      port: 19545 # TO CHANGE
+      user: 'root'
+      pass: 'Milvus'
+    db_info:
+      db: 'knowledgegraphdb'
+      table: 'vectorized_nodes'
+    params:
+      id_length: 32
+      vector_dim: 1024
+      document_max_length: 51200
+      load: True
+      flush: True
+      create_sleep: 1
+      search_metric: 'IP'
+
+  tripletsdb_config:
+      vendor: 'milvus'
+      conn:
+        host: 'localhost'
+        port: 19545 # TO CHANGE
+        user: 'root'
+        pass: 'Milvus'
+      db_info:
+        db: 'knowledgegraphdb'
+        table: 'vectorized_triplets'
+      params:
+        id_length: 32
+        vector_dim: 1024
+        document_max_length: 51200
+        load: True
+        flush: True
+        create_sleep: 1
+        search_metric: 'IP'
+
+  nodestree_config:
+    vectordb_leafnodes_config:
+      vendor: 'milvus'
+      conn:
+        host: 'localhost'
+        port: 19545 # TO CHANGE
+        user: 'root'
+        pass: 'Milvus'
+      db_info:
+        db: 'knowledgegraphdb'
+        table: 'vectorized_leafnodes'
+      params:
+        id_length: 32
+        vector_dim: 1024
+        document_max_length: 51200
+        load: True
+        flush: True
+        create_sleep: 1
+        search_metric: 'IP'
+
+    vectordb_summnodes_config:
+      vendor: 'milvus'
+      conn:
+        host: 'localhost'
+        port: 19545 # TO CHANGE
+        user: 'root'
+        pass: 'Milvus'
+      db_info:
+        db: 'knowledgegraphdb'
+        table: 'vectorized_summnodes'
+      params:
+        id_length: 32
+        vector_dim: 1024
+        document_max_length: 51200
+        load: True
+        flush: True
+        create_sleep: 1
+        search_metric: 'IP'
+
+    treedb_config:
+      vendor: 'neo4j'
+      host: 'localhost'
+      port: 7705 # TO CHANGE
+      params:
+        user: 'neo4j'
+        pwd: 'password'
+      db_info:
+        db: 'kgtreemodeldb'
+        table: 'kgtreemodeltable'
+
+    nodes_summarization_task_config:
+      prompts_version: 'v1'
+
+    e2n_sim_threshold: 0.6
+    depth_rate: 0.5
+    nodes_aggregation_mechanism: "sequencial"
+
+  embedder_config:
+    prompts:
+      query: "query: "
+      passage: "passage: "
+    model_name_or_path: 'intfloat/multilingual-e5-large'
+
+CONTAINERS_ADDITIONAL_CONFIG:
+  workspace_cntname: 'personalai_mmenschikov_workspace'
+  workspace_host: 'localhost'
+
+  redis_cntname: 'personalai_mmenschikov_redis'
+  redis_ui_cntname: 'personalai_mmenschikov_redis_ui'
+  redis_ui_host: 'personalai_mmenschikov_redis_ui'
+  redis_ui_port: 5558 # TO CHANGE
+
+  mongo_cntname: 'personalai_mmenschikov_mongo'
+  mongo_ui_cntname: 'personalai_mmenschikov_mongo_ui'
+  mongo_ui_host: 'personalai_mmenschikov_mongo_ui'
+  mongo_ui_port: 8099 # TO CHANGE
+
+  milvus_cntname: 'personalai_mmenschikov_milvus'
+  milvus_host: 'localhost'
+  milvus_port1: 19545 # TO CHANGE
+  milvus_port2: 2394 # TO CHANGE
+  milvus_ui_port: 9106 # TO CHANGE
+  milvus_config: milvus
+
+  neo4j_cntname: 'personalai_mmenschikov_neo4j'
+  neo4j_ui_port: 7492 # TO CHANGE
+
+  ollama_cntname: 'personalai_mmenschikov_ollama'
+  ollama_host: 'personalai_mmenschikov_ollama'
+
+########## HARDCODED PARAMS ##########
+
+KG_DIR_STRUCT:
+  embeddings_part: embeddings_part
+  graph_part: graph_part
+  cache_dir:
+    base: kv_cache
+    persistant: persistent_volume
+    ram: ram_volume
+
+PERSONALAI_REPO_DIRS:
+  kg: 'data/knowledge_graphs'
+  qa_datasets: 'data/qa_datasets/v2'
+  notebooks: 'notebooks'
+  src: 'src'
+  models: 'models'
+  configs: 'configs'
+
+WORKSPACE_CONTAINER_DIRS:
+  base_path: '/home/workspace'
+  kg: 'data/knowledge_graphs'
+  qa_datasets: 'data/qa_datasets/v2'
+  notebooks: 'notebooks'
+  src: 'src'
+  models: 'models'
+
+SAVE_CONFIGS_NAMES:
+  graph_config: graph_config
+  embeddings_config: embeddings_config
+  nodestree_config: nodestree_config
+  mem_pipeline_config: mem_pipeline_config
+  kvdriver_cache_config: kvdriver_cache_config
+  docker_compose_env: .env
+
+  hyperparameters: hyperparameters.yaml
+  tmp_extracted_triplets: tmp_extracted_triplets
+  extracted_triplets: extracted_triplets
+
+  graph_statistics_dir: graph_statistics
+  kg_stats: stats_info.json
+  kg_health_checks: health_checks.json

@@ -1,0 +1,42 @@
+connector: "" # 'redis' | 'mongo' | 'mixed_kv' | 'inmemory_kv'
+
+count_items:
+  db_size:
+    from: 0
+    to: 100000
+    step: 1000
+  trials: 15
+
+item_exist:
+  db_size:
+    from: 0
+    to: 100000
+    step: 1000
+  trials: 15
+  existing: True
+  not_existing: True
+
+read:
+  mode: "batch" # 'batch' | 'single'
+  db_size:
+    from: 0
+    to: 100000
+    step: 1000
+  input_size:
+    from: 0
+    to: 20000
+    step: 1000
+  trials: 15
+  not_existing_ids_prcnt: 10
+
+write:
+  mode: "batch" # 'batch' | 'single'
+  db_size:
+    from: 0
+    to: 100000
+    step: 1000
+  input_size:
+    from: 0
+    to: 20000
+    step: 1000
+  trials: 15

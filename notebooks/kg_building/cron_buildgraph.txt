@@ -1,0 +1,27 @@
+SPEC_KG_RELNAME=trivia_qa_rcwikipedia_validation/llama318b_210525_v2prompts
+BASE_DIR=/home/workspace/data/knowledge_graphs/$SPEC_KG_RELNAME
+NOTEBOOKS_BASE_PATH=/home/workspace/notebooks/kg_building
+PARAMS_NAME=params.yaml
+
+34 13 05 05 * cd $BASE_DIR ; bash $NOTEBOOKS_BASE_PATH/build_graph.sh $PARAMS_NAME $SPEC_KG_RELNAME >> crontab_log.txt
+
+SPEC_KG_RELNAME=hotpotqa_distractor_validation/deepseek_120425_v2prompts
+BASE_DIR=/home/workspace/data/knowledge_graphs/$SPEC_KG_RELNAME
+NOTEBOOKS_BASE_PATH=/home/workspace/notebooks/kg_building
+PARAMS_NAME=hyperparameters_updated.yaml
+
+55 02 12 05 * cd $BASE_DIR ; /usr/bin/python3 $NOTEBOOKS_BASE_PATH/create/create_nodestree.py "$BASE_DIR/$PARAMS_NAME"  >> build_tree_crontab_log.txt 2>&1
+
+
+SPEC_KG_RELNAME=hotpotqa_distractor_validation/llama318b_040525_v2prompts ; BASE_DIR=/home/workspace/data/knowledge_graphs/$SPEC_KG_RELNAME ; NOTEBOOKS_BASE_PATH=/home/workspace/notebooks/kg_building ; PARAMS_NAME=params.yaml ; cd $BASE_DIR ; /usr/bin/python3 $NOTEBOOKS_BASE_PATH/create/create_nodestree.py "$NOTEBOOKS_BASE_PATH/create/$PARAMS_NAME" >> build_tree_crontab_log.txt 2>&1
+
+SPEC_KG_RELNAME=diaasq/qwen25_070325_v2prompts ; BASE_DIR=/home/workspace/data/knowledge_graphs/$SPEC_KG_RELNAME ; NOTEBOOKS_BASE_PATH=/home/workspace/notebooks/kg_building ; PARAMS_NAME=params.yaml ; cd $BASE_DIR ; /usr/bin/python3 $NOTEBOOKS_BASE_PATH/create/create_nodestree.py "$NOTEBOOKS_BASE_PATH/create/$PARAMS_NAME" >> build_tree_crontab_log.txt 2>&1
+
+
+===========
+
+BASE_DIR=/home/workspace/data/knowledge_graphs/hotpotqa_distractor_validation/llama318b_040525_v2prompts
+NOTEBOOKS_BASE_PATH=/home/workspace/notebooks/kg_building
+PARAMS_NAME=hyperparameters_updated.yaml
+
+24 21 25 05 * cd $BASE_DIR ; /usr/bin/python3 "$NOTEBOOKS_BASE_PATH/create/create_nodestree.py" $PARAMS_NAME >> build_tree_crontab_log.txt 2>&1

@@ -1,0 +1,36 @@
+DATASET_NAME: 'trivia_qa_rcwikipedia_validation' # TO CHANGE
+KNOWLEDGE_GRAPH_NAME: 'qwen25_110325_v2prompts' # TO CHANGE
+
+########## HARDCODED PARAMS ##########
+
+KG_DIR_STRUCT:
+  embeddings_dir_name: embeddings_part
+  graph_dir_name: graph_part
+  cache_dir_name:
+    base: kv_cache
+    persistant: persistent_volume
+    ram: ram_volume
+
+WORKSPACE_CONTAINER_DIRS:
+  base_path: '/home/workspace'
+  kg: 'data/knowledge_graphs'
+  qa_datasets: 'data/qa_datasets/v2'
+  notebooks: 'notebooks'
+  src: 'src'
+  models: 'models'
+
+SAVE_CONFIGS_NAMES:
+  graph_config: graph_config
+  embeddings_config: embeddings_config
+  nodestree_config: nodestree_config
+  mem_pipeline_config: mem_pipeline_config
+  kvdriver_cache_config: kvdriver_cache_config
+  docker_compose_env: .env
+
+  hyperparameters: hyperparameters.yaml
+  tmp_extracted_triplets: tmp_extracted_triplets
+  extracted_triplets: extracted_triplets
+
+  graph_statistics_dir: graph_statistics
+  kg_stats: stats_info.json
+  kg_health_checks: health_checks.json

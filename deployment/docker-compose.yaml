@@ -1,0 +1,120 @@
+services:
+
+  # Database - Neo4j
+  neo4j:
+    container_name: personalai_mmenschikov_neo4j
+    #user: "4200235:4200235"
+    image: neo4j:5.21.0-enterprise
+    hostname: personalai_mmenschikov_neo4j
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      - NEO4J_AUTH=neo4j/password
+      - NEO4J_ACCEPT_LICENSE_AGREEMENT=yes
+    volumes:
+      - ../../neo4j_volume/data:/data
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 8G
+        reservations:
+          cpus: '1'
+          memory: 4G
+
+  milvus:
+    image: milvusdb/milvus:v2.5.8
+    container_name: personalai_mmenschikov_milvus
+    hostname: personalai_mmenschikov_milvus
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      - ETCD_USE_EMBED=true
+      - ETCD_DATA_DIR=/var/lib/milvus/etcd
+      - ETCD_CONFIG_PATH=/milvus/configs/embedEtcd.yaml
+      - COMMON_STORAGETYPE=local
+    ports:
+      - 19530:19530
+      - 2379:2379
+      - 9091:9091
+    volumes:
+      - ../../milvus_volume/data:/var/lib/milvus
+      - ../configs/milvus/embedEtcd.yaml:/milvus/configs/embedEtcd.yaml
+      - ../configs/milvus/user.yaml:/milvus/configs/user.yaml
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      start_period: 90s
+      timeout: 20s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 10G
+        reservations:
+          cpus: '1'
+          memory: 5G
+
+  workspace:
+    image: m.menschikov/workspace:v1
+    container_name: personalai_mmenschikov_workspace
+    hostname: worksapceservice
+    volumes:
+      - ../data/qa_datasets:/home/m.menschikov/workspace/personal_ai/Personal-AI/data/qa_datasets #/home/dzigen/Desktop/PersonalAI/Personal-AI/data/qa_datasets | /home/m.menschikov/workspace/personal_ai/Personal-AI/data/qa_datasets
+      - ../src:/home/m.menschikov/workspace/personal_ai/Personal-AI/src #/home/dzigen/Desktop/PersonalAI/Personal-AI/src | /home/m.menschikov/workspace/personal_ai/Personal-AI/src
+      - ../experiments:/home/m.menschikov/workspace/personal_ai/Personal-AI/experiments #/home/dzigen/Desktop/PersonalAI/Personal-AI/experiments | /home/m.menschikov/workspace/personal_ai/Personal-AI/experiments
+      - ../notebooks:/home/m.menschikov/workspace/personal_ai/Personal-AI/notebooks #/home/dzigen/Desktop/PersonalAI/Personal-AI/notebooks | /home/m.menschikov/workspace/personal_ai/Personal-AI/notebooks
+      #- /home/dzigen/Desktop/triviaqa_gpt4o/data/knowledge_graphs:/home/dzigen/Desktop/PersonalAI/Personal-AI/data/knowledge_graphs #/home/m.menschikov/workspace/personal_ai/Personal-AI/data/knowledge_graphs
+      - /mnt/data/m.menschikov/data/knowledge_graphs:/home/m.menschikov/workspace/personal_ai/Personal-AI/data/knowledge_graphs
+    deploy:
+      resources:
+        limits:
+          cpus: '16'
+          memory: 32G
+        reservations:
+          cpus: '8'
+          memory: 24G
+          devices:
+            - driver: nvidia
+              device_ids: ['1']
+              capabilities: [gpu]
+
+  empty_workspace:
+    image: m.menschikov/empty_workspace:v1
+    container_name: ${EMPTY_WORKSPACE_CNTNAME}
+    hostname: ${EMPTY_WORKSPACE_HOST}
+    volumes:
+      - ${BASE_PERSONALAI_PATH}:${BASE_PERSONALAI_PATH}
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 8G
+        reservations:
+          cpus: '1'
+          memory: 4G
+
+  ollama_agent:
+    image: ollama/ollama:latest
+    container_name: personalai_mmenschikov_ollama_qwen7b
+    ports:
+      - "11437:11434"
+    environment:
+      - OLLAMA_DEBUG=1
+    volumes:
+      - ../../ollama_volume:/root/.ollama
+    deploy:
+      resources:
+        limits:
+          cpus: '8'
+          memory: 32G
+        reservations:
+          cpus: '4'
+          memory: 4G
+          devices:
+            - driver: nvidia
+              device_ids: ['0']
+              capabilities: [gpu]

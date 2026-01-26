@@ -1,0 +1,12 @@
+[core]
+    autostage = true
+    remote = gdrive_storage
+['remote "megatron_storage"']
+    url = ssh://m.menschikov@10.16.88.76/mnt/data/personalai_dvc_storage
+    ask_password = false
+    port = 22
+['remote "gdrive_storage"']
+    url = gdrive://1Lbr0jYPvJQIbzygVQaqM0T17NMLLsXQ9
+    gdrive_acknowledge_abuse = true
+    gdrive_client_id = 43198431785-vc5je82mfb44o3a569k0lhh7ugu6g23q.apps.googleusercontent.com
+    gdrive_client_secret = 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

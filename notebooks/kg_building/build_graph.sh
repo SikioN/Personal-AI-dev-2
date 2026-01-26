@@ -1,0 +1,19 @@
+#!/usr/bin/bash
+
+NOTEBOOKS_BASE_PATH=/home/workspace/notebooks/kg_building
+KG_BASE_PATH=/home/workspace/data/knowledge_graphs
+
+PYTHON_CMD=/usr/bin/python3
+PARAMS_NAME=$1
+$SPEC_KG_RELNAME=$2
+
+SPEC_KG_ABSPATH=$KG_BASE_PATH/$SPEC_KG_RELNAME
+
+#PARAMS_PATH=$SPEC_KG_ABSPATH/$PARAMS_NAME
+PARAMS_PATH=$NOTEBOOKS_BASE_PATH/create/$PARAMS_NAME
+
+CREATE_SCRIPT=$NOTEBOOKS_BASE_PATH/create/create_kg.py
+HEALTH_SCRIPT=$NOTEBOOKS_BASE_PATH/health_check/check_kg.py
+
+cd $SPEC_KG_ABSPATH ; $PYTHON_CMD $CREATE_SCRIPT $PARAMS_PATH >> create_log.txt 2>&1
+cd $SPEC_KG_ABSPATH ; $PYTHON_CMD $HEALTH_SCRIPT $PARAMS_PATH >> health_log.txt 2>&1

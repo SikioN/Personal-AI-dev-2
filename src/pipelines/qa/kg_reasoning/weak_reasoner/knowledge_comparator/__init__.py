@@ -1,0 +1,1 @@
+from .KnowledgeComparator import KnowledgeComparator, KnowledgeComparatorConfig
