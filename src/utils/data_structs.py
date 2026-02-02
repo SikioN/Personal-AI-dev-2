@@ -249,29 +249,29 @@ class TripletCreator(BaseCreator):
         :rtype: Tuple[str,str]
         """
         rel_type = triplet.relation.type
+        str_triplet = ""
+
+        # Добавляем временной маркер в самое начало, если он есть
+        if triplet.time is not None:
+            str_triplet += f"{triplet.time.name}: "
+        elif "time" in triplet.relation.prop.keys():
+            str_triplet += triplet.relation.prop["time"] + ": "
+        elif "time" in triplet.end_node.prop.keys():
+             str_triplet += triplet.end_node.prop["time"] + ": "
+
         if (rel_type == RelationType.episodic) or (rel_type == RelationType.hyper) or (rel_type == RelationType.time):
-            str_triplet = ""
-            if "time" in triplet.end_node.prop.keys():
-                str_triplet += triplet.end_node.prop["time"] + ": "
             str_triplet += TripletCreator.add_str_props(triplet.end_node, str(triplet.end_node.name))
 
         elif rel_type == RelationType.simple:
-            str_triplet = ""
-            # Если есть явная вершина времени, добавляем её в начало
-            if triplet.time is not None:
-                str_triplet += f"{triplet.time.name}: "
-            # Иначе проверяем старый способ через свойства (для обратной совместимости)
-            elif "time" in triplet.relation.prop.keys():
-                str_triplet += triplet.relation.prop["time"] + ": "
-
             str_triplet += " ".join([
                 TripletCreator.add_str_props(triplet.start_node, str(triplet.start_node.name)),
                 TripletCreator.add_str_props(triplet.relation, str(triplet.relation.name)),
                 TripletCreator.add_str_props(triplet.end_node, str(triplet.end_node.name))])
 
-
         else:
             raise KeyError
+
+        return triplet.relation.id, str_triplet
 
         return triplet.relation.id, str_triplet
 

@@ -2,26 +2,13 @@ from dataclasses import dataclass, field
 from typing import Tuple, Union, List
 from copy import deepcopy
 
-from .config import ENEXTR_MAIN_LOG_PATH, DEFAULT_ENT_EXTR_TASK_CONFIG
+from .config import ENEXTR_MAIN_LOG_PATH, DEFAULT_ENT_EXTR_TASK_CONFIG, EntitiesExtractorConfig
 from ......utils import ReturnInfo, Logger, AgentTaskSolverConfig, AgentTaskSolver
 from ......utils import ReturnStatus 
 from ......agents import AgentDriver, AgentDriverConfig
 from ......utils.data_structs import create_id
 from ......db_drivers.kv_driver import KeyValueDriverConfig
 from ......utils.cache_kv import CacheKV, CacheUtils
-
-@dataclass
-class EntitiesExtractorConfig:
-    lang: str = 'auto'
-    adriver_config: AgentDriverConfig = field(default_factory=lambda: AgentDriverConfig())
-    entities_extraction_agent_task_config: AgentTaskSolverConfig = field(default_factory=lambda: DEFAULT_ENT_EXTR_TASK_CONFIG)
-
-    cache_table_name: str = "medreasn_entextr_main_stage_cache"
-    log: Logger = field(default_factory=lambda: Logger(ENEXTR_MAIN_LOG_PATH))
-    verbose: bool = False
-
-    def to_str(self):
-        return f"{self.lang}|{self.adriver_config.to_str()}|{self.entities_extraction_agent_task_config.version}"
 
 class EntitiesExtractor(CacheUtils):
     def __init__(self, config: EntitiesExtractorConfig = EntitiesExtractorConfig(), 

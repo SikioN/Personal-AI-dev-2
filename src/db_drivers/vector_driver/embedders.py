@@ -2,11 +2,13 @@ from dataclasses import dataclass, field
 from sentence_transformers import SentenceTransformer
 from typing import Dict, List
 
+from src.utils.device_utils import get_device
+
 @dataclass
 class EmbedderModelConfig:
     model_name_or_path: str = '../models/intfloat/multilingual-e5-small'
-    prompts: Dict = field(default_factory=lambda: {"query": "query: ", "passage": "passage: "})
-    device: str = 'cuda'
+    prompts: Dict = field(default_factory=lambda: {"query": "query: ", "document": "passage: "})
+    device: str = field(default_factory=get_device)
     normalize_embeddings: bool = True
 
 class EmbedderModel:
@@ -29,7 +31,7 @@ class EmbedderModel:
         return [list(obj.astype(float)) for obj in output]
 
     def encode_passages(self, passages: List[str], **kwargs) -> List[List[float]]:
-        output = self.model.encode(passages, prompt_name='passage',
+        output = self.model.encode(passages, prompt_name='document',
                                  normalize_embeddings=self.config.normalize_embeddings,
                                  **kwargs)
         return [list(obj.astype(float)) for obj in output]

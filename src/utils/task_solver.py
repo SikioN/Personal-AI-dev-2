@@ -5,7 +5,16 @@ from copy import deepcopy
 import hashlib 
 
 from .logger import Logger
-from .language_detector import detect_lang
+
+# Опциональный импорт - polyglot может отсутствовать
+try:
+    from .language_detector import detect_lang
+except ImportError:
+    # Fallback: если polyglot не установлен, возвращаем английский язык по умолчанию
+    from .errors import ReturnStatus
+    def detect_lang(text):
+        return 'en', ReturnStatus.success
+
 from .errors import ReturnStatus, STATUS_MESSAGE
 from .cache_kv import CacheKV
 from ..agents.utils import AbstractAgentConnector

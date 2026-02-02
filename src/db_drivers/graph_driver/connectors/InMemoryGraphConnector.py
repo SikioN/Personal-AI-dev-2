@@ -258,8 +258,18 @@ class InMemoryGraphConnector(AbstractGraphDatabaseConnection):
         return triplets
 
     def get_node_type(self, id: str) -> NodeType:
-        # TODO
-        raise NotImplementedError
+        if id in self.nodes:
+            return self.nodes[id].type
+        
+        # Check if it is a string ID that maps to internal IDs
+        internal_ids = self.strid_nodes_index.get(id)
+        if internal_ids and len(internal_ids) > 0:
+            # All internal nodes for a given string ID should have the same type
+            first_internal_id = list(internal_ids)[0]
+            if first_internal_id in self.nodes:
+                return self.nodes[first_internal_id].type
+            
+        raise ValueError(f"Node with id {id} not found")
 
     def count_items(self, id: str = None, id_type: str = None) -> Union[Dict[str,int],int]:
         result = None

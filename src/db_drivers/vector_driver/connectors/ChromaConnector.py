@@ -1,8 +1,14 @@
 from typing import List, Tuple
 
-__import__('pysqlite3')
-import sys
-sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+# Try to use pysqlite3 if available (required for older ChromaDB versions)
+# On modern systems, regular sqlite3 should work fine
+try:
+    __import__('pysqlite3')
+    import sys
+    sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+except ImportError:
+    # pysqlite3 not available, use system sqlite3
+    pass
 
 import chromadb
 import logging
@@ -27,7 +33,12 @@ class ChromaConnection(AbstractVectorDatabaseConnection):
 
     def open_connection(self) -> ReturnInfo:
         self.client = chromadb.PersistentClient(path=self.config.conn['path'])
-        self.collection = self.client.get_or_create_collection(name=self.config.db_info['table'], metadata=self.config.params)
+        
+        # In newer ChromaDB versions, metadata cannot be an empty dictionary
+        if self.config.params:
+            self.collection = self.client.get_or_create_collection(name=self.config.db_info['table'], metadata=self.config.params)
+        else:
+            self.collection = self.client.get_or_create_collection(name=self.config.db_info['table'])
 
         if self.config.need_to_clear:
             self.clear()
@@ -160,5 +171,9 @@ class ChromaConnection(AbstractVectorDatabaseConnection):
 
     def clear(self) -> None:
         self.client.delete_collection(name=self.config.db_info['table'])
-        self.collection = self.client.create_collection(
-            name=self.config.db_info['table'], metadata=self.config.params)
+        if self.config.params:
+            self.collection = self.client.create_collection(
+                name=self.config.db_info['table'], metadata=self.config.params)
+        else:
+            self.collection = self.client.create_collection(
+                name=self.config.db_info['table'])

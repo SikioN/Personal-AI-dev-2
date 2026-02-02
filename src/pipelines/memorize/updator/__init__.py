@@ -1,1 +1,2 @@
-from .LLMUpdator import LLMUpdator, LLMUpdatorConfig
+from .configs import LLMUpdatorConfig
+from .LLMUpdator import LLMUpdator

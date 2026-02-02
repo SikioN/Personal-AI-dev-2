@@ -25,6 +25,9 @@ experiments/legacy
 experiments/qa_kg/legacy
 
 experiments/
+chroma_test_db/
+ollama.log
+*.log
 
 create_local_db/
 archives/

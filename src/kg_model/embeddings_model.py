@@ -54,8 +54,7 @@ class EmbeddingsModel:
             'nodes': VectorDriver.connect(config.nodesdb_driver_config),
             'triplets': VectorDriver.connect(config.tripletsdb_driver_config)}
 
-        #!!! PAY ATTENTION !!!
-        #self.embedder = EmbedderModel(config.embedder_config)
+        self.embedder = EmbedderModel(config.embedder_config)
 
     def create_triplets(self, triplets:List[Triplet], create_nodes:bool=True, batch_size:int=128, status_bar: bool = True)-> Dict[str, Set[str]]:
         """Метод предназначен для добавления информации, представленной в виде списка триплетов, в векторную структуру.
@@ -188,7 +187,11 @@ class EmbeddingsModel:
         :param stringified_instances: Строковые представления объектов, которые будут сохранены в хранилище.
         :type stringified_instances: List[str]
         """
-        torch.cuda.empty_cache()
+        # Clear cache for different device types (CUDA/MPS/CPU)
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            torch.mps.empty_cache()
         embs = self.embedder.encode_passages(stringified_instances, batch_size=16)
         formated_instances = [VectorDBInstance(id=id, document=doc, embedding=emb, metadata={'id': id, **metad})
                             for id, doc, emb, metad in zip(ids, stringified_instances, embs, metadatas)]

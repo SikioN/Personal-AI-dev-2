@@ -1,4 +1,4 @@
-from .personalai_main import PersonalAI, PersonalAIConfig
+# from .personalai_main import PersonalAI, PersonalAIConfig
 
 from .kg_model import EmbedderModelConfig, EmbeddingsModelConfig, GraphModelConfig
 

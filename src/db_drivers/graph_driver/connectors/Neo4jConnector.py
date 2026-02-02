@@ -339,21 +339,24 @@ class Neo4jConnector(AbstractGraphDatabaseConnection):
 
     def count_items(self, id: str = None, id_type: str = None) -> Union[Dict[str,int],int]:
         if id_type is None:
-            n_output = self.execute_query("MATCH (a) RETURN count(a) as n_count")[0]
-            r_output = self.execute_query("MATCH (a)-[rel]->(b) RETURN count(rel) as r_count")[0]
-            result = {'triplets': r_output['r_count'], 'nodes': n_output['n_count']}
+            n_raw = self.execute_query("MATCH (a) RETURN count(a) as n_count")
+            r_raw = self.execute_query("MATCH (a)-[rel]->(b) RETURN count(rel) as r_count")
+            
+            n_count = n_raw[0]['n_count'] if n_raw and len(n_raw) > 0 else 0
+            r_count = r_raw[0]['r_count'] if r_raw and len(r_raw) > 0 else 0
+            result = {'triplets': r_count, 'nodes': n_count}
 
         elif id_type == 'node':
-            n_output = self.execute_query(f'MATCH (a) WHERE a.str_id = "{id}" RETURN COUNT(a) as n_count')[0]
-            result = n_output['n_count']
+            n_raw = self.execute_query(f'MATCH (a) WHERE a.str_id = "{id}" RETURN COUNT(a) as n_count')
+            result = n_raw[0]['n_count'] if n_raw and len(n_raw) > 0 else 0
 
         elif id_type == 'relation':
-            r_output = self.execute_query(f'MATCH (a)-[rel]->(b) WHERE rel.str_id = "{id}" RETURN COUNT(rel) as r_count')[0]
-            result = r_output['r_count']
+            r_raw = self.execute_query(f'MATCH (a)-[rel]->(b) WHERE rel.str_id = "{id}" RETURN COUNT(rel) as r_count')
+            result = r_raw[0]['r_count'] if r_raw and len(r_raw) > 0 else 0
 
         elif id_type == 'triplet':
-            r_output = self.execute_query(f'MATCH (a)-[rel]->(b) WHERE rel.t_id = "{id}" RETURN COUNT(rel) as r_count')[0]
-            result = r_output['r_count']
+            r_raw = self.execute_query(f'MATCH (a)-[rel]->(b) WHERE rel.t_id = "{id}" RETURN COUNT(rel) as r_count')
+            result = r_raw[0]['r_count'] if r_raw and len(r_raw) > 0 else 0
 
         else:
             raise ValueError

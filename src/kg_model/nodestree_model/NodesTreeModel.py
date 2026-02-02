@@ -349,7 +349,11 @@ class NodesTreeModel:
         :type new_texts: List[str]
         :raises KeyError: _description_
         """
-        torch.cuda.empty_cache()
+        # Clear cache for different device types (CUDA/MPS/CPU)
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            torch.mps.empty_cache()
         embs = self.embedder.encode_passages(new_texts, batch_size=16)
         formated_instances = [VectorDBInstance(id=id, document=doc, embedding=emb, metadata={'id': id})
                             for id, doc, emb in zip(ids, new_texts, embs)]

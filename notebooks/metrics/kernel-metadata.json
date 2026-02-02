@@ -1,0 +1,15 @@
+{
+  "id": "nmuravya/wikidata-finetune-sber",
+  "title": "Wikidata Finetune Sber",
+  "code_file": "wikidata_finetune.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": "true",
+  "enable_gpu": "true",
+  "enable_tpu": "false",
+  "enable_internet": "true",
+  "dataset_sources": [
+    "nmuravya/wikidata-big-sber"
+  ],
+  "docker_image_pinning_type": "original"
+}

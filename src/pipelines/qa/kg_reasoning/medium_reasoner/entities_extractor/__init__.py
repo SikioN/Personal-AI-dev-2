@@ -1,1 +1,2 @@
-from .EntitiesExtractor import EntitiesExtractorConfig, EntitiesExtractor
+from .config import EntitiesExtractorConfig
+from .EntitiesExtractor import EntitiesExtractor

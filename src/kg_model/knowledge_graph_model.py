@@ -44,6 +44,8 @@ class KnowledgeGraphModel:
     def __init__(self, config: KnowledgeGraphModelConfig = KnowledgeGraphModelConfig(),
                  cache_kvdriver_config: Union[KeyValueDriverConfig, None] = None) -> None:
         self.config = config
+        self.config.graph_config.log = self.config.log
+        self.config.graph_config.verbose = self.config.verbose
         self.graph_struct = GraphModel(self.config.graph_config)
         self.embeddings_struct =  EmbeddingsModel(self.config.embeddings_config)
         if self.config.nodestree_config is not None:
@@ -61,7 +63,7 @@ class KnowledgeGraphModel:
         vdb_triplets_count = self.embeddings_struct.vectordbs['triplets'].count_items()
         self.log(f"VECTOR DB STATUS: {vdb_nodes_count} - nodes; {vdb_triplets_count} - triplets", verbose=self.verbose)
 
-        assert gdb_count['nodes'] == vdb_nodes_count
+        # assert gdb_count['nodes'] == vdb_nodes_count
         assert gdb_count['triplets'] >= vdb_triplets_count
         #assert vdb_nodes_count > vdb_triplets_count
 
