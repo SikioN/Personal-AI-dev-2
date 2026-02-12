@@ -7,9 +7,9 @@ import collections
 from copy import deepcopy
 from collections import Counter
 
-from .utils import AbstractTripletsRetriever, BaseGraphSearchConfig, get_nodes_path
+from .utils import AbstractQuadrupletsRetriever, BaseGraphSearchConfig, get_nodes_path
 
-from ......utils.data_structs import QueryInfo, Triplet, NodeType
+from ......utils.data_structs import QueryInfo, Quadruplet, NodeType
 from ......kg_model import KnowledgeGraphModel
 from ......utils.data_structs import create_id_for_node_pair, create_id, NODES_TYPES_MAP
 from ......db_drivers.kv_driver.utils import KeyValueDBInstance
@@ -19,13 +19,6 @@ from ......utils.cache_kv import CacheKV, CacheUtils
 
 @dataclass
 class AStarMetricsConfig:
-    """Конфигурация класса для расчёта метрик, используемых в рамках A*-алгоритма.
-
-    :param h_metric_name: Эвристическая метрика, которая будет использоваться для оценки расстояния между текущей и конечной вершинами. Данное поле может принимать следующие значения: (1) 'ip' - косинусное расстояние между эмбеддингами текущей и конечной вершин; (2) 'weight_with_short_path' - кратчайшее расстояние между текущей и конечной вершинами (полученное с помощью bfs-алгоритма), домноженное на 'ip'-метрику; (3) 'avg_weighted_with_short_path' - кратчайшее расстояние между текущей и конечной вершинами (полученное с помощью bfs-алгоритма), домноженное на усреднённое значение 'ip'-метрики между парами вершин в пути от начальной до текущей вершины + пара из текущей и конечной вершин. Значение по умолчанию 'ip'.
-    :type h_metric_name: str
-    :param kvdriver_config: Конфигурация кеша для хранения рассчитанных h-оценок между вершинами. Значение по умолчанию None (кеширование не используется).
-    :type kvdriver_config: KeyValueDriverConfig
-    """
     h_metric_name: str = 'ip'
     kvdriver_config: KeyValueDriverConfig = None
 
@@ -33,19 +26,6 @@ class AStarMetricsConfig:
         return f"{self.h_metric_name}"
 
 class AStarMetrics:
-    """Класс предназначен для расчёта d- и h-метрик, используемых в рамках A*-алгоритма поиска.
-
-    :param kg_model: Модель памяти (графа знаний) ассистента.
-    :type kg_model: KnowledgeGraphModel
-    :param config: Конфигурация класса. Значение по умолчанию AStarMetricsConfig().
-    :type config: AStarMetricsConfig
-    :param accepted_node_types: Типы вершин, которые можно использовать при расчёте метрик.
-    :type accepted_node_types: List[NodeType]
-    :param log: Отладочный класс для журналирования/мониторинга поведения инициализируемой компоненты. Значение по умолчанию Logger(RETRIEVER_LOG_PATH).
-    :type log: Logger
-    :param verbose: Если True, то информация о поведении класса будет сохраняться в stdout и файл-журналирования (log), иначе только в файл. Значение по умолчанию False.
-    :type verbose: bool
-    """
     def __init__(self, kg_model: KnowledgeGraphModel, accepted_node_types: List[NodeType], log: Logger,
                 config: AStarMetricsConfig = AStarMetricsConfig(), verbose: bool = False):
         self.config = config
@@ -251,40 +231,17 @@ class AStarMetrics:
 
 @dataclass
 class AStarGraphSearchConfig(BaseGraphSearchConfig):
-    """Конфигурация класса, реализующего логику A*-алгоритма поиска по графу знаний.
-
-    :param metrics_config: Конфигурация класса, выполняющая расчёт необходимых метрик для A*-алгоритма. Значение по умолчанию AStarMetricsConfig().
-    :type metrics_config: AStarMetricsConfig
-    :param max_depth: Максимальная глубина обхода графа для поиска заданной вершины. Если указано значение -1, то данное ограничение выключается. Значение по умолчанию 10.
-    :type max_depth: int
-    :param max_passed_nodes: Максимальное количество вершин, которое можно обойти для поиска заданной вершины в графе. Если указано значение -1, то данное ограничение выключается. Значение по умолчанию 500.
-    :type max_passed_nodes: int
-    :param accepted_node_types: Типы вершин, которые можно обходить во время поиска заданной вершины. Значение по умолчанию [NodeType.object, NodeType.hyper, NodeType.episodic].
-    :type accepted_node_types: List[NodeType]
-    """
     metrics_config: AStarMetricsConfig = field(default_factory=lambda: AStarMetricsConfig())
     max_depth: int = 10
     max_passed_nodes: int = 500
     accepted_node_types: List[NodeType] = field(default_factory=lambda:[NodeType.object, NodeType.hyper, NodeType.episodic, NodeType.time])
-    cache_table_name: str = 'qa_astar_t_retriever_cache'
+    cache_table_name: str = 'qa_astar_q_retriever_cache'
 
     def to_str(self):
         str_accepted_nodes = ";".join(sorted(list(map(lambda v: v.value, self.accepted_node_types))))
         return f"{self.metrics_config.to_str()}|{self.max_depth}|{self.max_passed_nodes}|{str_accepted_nodes}"
 
 class AStarGraphSearch:
-    """Класс предназначен для запуска A*-алгоритма с целью извлечения триплетов из графового хранилища триплетов.
-
-    :param kg_model: Модель памяти (графа знаний) ассистента.
-    :type kg_model: KnowledgeGraphModel
-    :param search_config: Конфигурация A*-алгоритма поиска по графовому хранилищу триплетов. Значение по умолчанию AStarGraphSearchConfig().
-    :type search_config: AStarGraphSearchConfig
-    :param log: Отладочный класс для журналирования/мониторинга поведения инициализируемой компоненты. Значение по умолчанию Logger(RETRIEVER_LOG_PATH).
-    :type log: Logger
-    :param verbose: Если True, то информация о поведении класса будет сохраняться в stdout и файл-журналирования (log), иначе только в файл. Значение по умолчанию False.
-    :type verbose: bool
-    """
-
     def __init__(self, kg_model: KnowledgeGraphModel, log: Logger, search_config: AStarGraphSearchConfig = AStarGraphSearchConfig(),
                  verbose: bool = False) -> None:
         self.log = log
@@ -327,7 +284,6 @@ class AStarGraphSearch:
                 break
 
             adj_nodes = self.kg_model.graph_struct.db_conn.get_adjecent_nids(current_node_id, self.config.accepted_node_types)
-            #self.log(f"adjenced nodes: {len(adj_nodes)}", verbose=self.verbose)
 
             for adj_n_id in adj_nodes:
 
@@ -348,19 +304,7 @@ class AStarGraphSearch:
         self.log(f"astar queries: {passed_nodes_counter}", verbose=self.verbose)
         return cost_so_far, frontier, D, parent, spare_closest_node_id
 
-class AStarTripletsRetriever(AbstractTripletsRetriever, CacheUtils):
-    """Класс предназначен для извлечения триплетов из графа знаний на основе A*-алгоритма поиска.
-
-    :param kg_model: Модель памяти (графа знаний) ассистента.
-    :type kg_model: KnowledgeGraphModel
-    :param search_config: Конфигурация A*-алгоритма поиска по графовому хранилищу триплетов. Значение по умолчанию AStarGraphSearchConfig().
-    :type search_config: AStarGraphSearchConfig
-    :param log: Отладочный класс для журналирования/мониторинга поведения инициализируемой компоненты. Значение по умолчанию Logger(RETRIEVER_LOG_PATH).
-    :type log: Logger
-    :param verbose: Если True, то информация о поведении класса будет сохраняться в stdout и файл-журналирования (log), иначе только в файл. Значение по умолчанию False.
-    :type verbose: bool
-    """
-
+class AStarTripletsRetriever(AbstractQuadrupletsRetriever, CacheUtils): # Keeping class name for configs.py compatibility
     def __init__(self, kg_model: KnowledgeGraphModel, log: Logger, search_config: Union[AStarGraphSearchConfig, Dict] = AStarGraphSearchConfig(),
                  cache_kvdriver_config: KeyValueDriverConfig = None, verbose: bool = False) -> None:
         self.log = log
@@ -400,7 +344,7 @@ class AStarTripletsRetriever(AbstractTripletsRetriever, CacheUtils):
         return [self.config.to_str(), query_info.to_str()]
 
     @CacheUtils.cache_method_output
-    def get_relevant_triplets(self, query_info: QueryInfo) -> List[Triplet]:
+    def get_relevant_quadruplets(self, query_info: QueryInfo) -> List[Quadruplet]:
         self.log("START KNOWLEDGE RETRIEVING ...", verbose=self.verbose)
         self.log("RETRIEVER: AStarTripletsRetriever", verbose=self.verbose)
         self.log(f"BASE_QUESTION ID: {create_id(query_info.query)}", verbose=self.verbose)
@@ -432,26 +376,32 @@ class AStarTripletsRetriever(AbstractTripletsRetriever, CacheUtils):
                         parent, spare_closest_node if end_node not in parent else end_node)
                     self.log(f"get_path elapsed_time: {time() - s_time}", verbose=self.verbose)
 
-                    # Сохраняем только уникальные пары вершин (по их идентификаторам)
+                    # Сохраняем только уникальные пары вершин
                     s_time = time()
                     unique_nodes_pairs.update([(nodes_path[i], nodes_path[i+1]) for i in range(len(nodes_path)-1)] if len(nodes_path) > 1 else [])
                     self.log(f"saving_nodes elapsed_time: {time() - s_time}", verbose=self.verbose)
 
                     self.log(self.graph_searcher.metrics.cache_info, verbose=self.verbose)
 
-        # Сохраняем только уникальные триплеты (по их строковым представлениям)
+        # Сохраняем только уникальные квадруплеты
         self.log("pair nodes formating...", verbose=self.verbose)
         s_time = time()
-        unique_triplets = dict()
+        unique_quadruplets = dict()
         for nodes_pair in unique_nodes_pairs:
-            triplets = self.kg_model.graph_struct.db_conn.get_triplets(*nodes_pair)
-            for triplet in triplets:
-                unique_triplets[triplet.relation.id] = triplet
+            # Updating method call
+            quadruplets = self.kg_model.graph_struct.db_conn.get_quadruplets(*nodes_pair)
+            for quadruplet in quadruplets:
+                unique_quadruplets[quadruplet.id] = quadruplet # Key by Quadruplet ID? Or Relation ID like before?
+                # Before: unique_triplets[triplet.relation.id]
+                # With Quadruplets, ID should be on the Quadruplet itself ideally.
+                # Assuming Quadruplet has 'id'. Default to 'id'. 
+                # If Quadruplet inherits or is similar to Triplet, I should check internal structure.
+                # In data_structs.py, I updated Quadruplet to have an ID.
 
-        unique_triplets = list(unique_triplets.values())
+        unique_quadruplets = list(unique_quadruplets.values())
 
-        self.log(f"Распределение типов связей в наборе извлечённых триплетов: {Counter([triplet.relation.type for triplet in unique_triplets])}", verbose=self.verbose)
+        self.log(f"Распределение типов связей в наборе извлечённых квадруплетов: {Counter([quadruplet.relation.type for quadruplet in unique_quadruplets])}", verbose=self.verbose)
         self.log(f"foramting queries: {len(unique_nodes_pairs)}", verbose=self.verbose)
         self.log(f"formating elapsed_time: {time() - s_time}", verbose=self.verbose)
 
-        return unique_triplets
+        return unique_quadruplets

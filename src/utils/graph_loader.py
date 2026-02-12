@@ -1,7 +1,7 @@
 import os
 from tqdm import tqdm
 from src.kg_model.knowledge_graph_model import KnowledgeGraphModel
-from src.utils.data_structs import NodeCreator, RelationCreator, TripletCreator, NodeType, RelationType, create_id
+from src.utils.data_structs import NodeCreator, RelationCreator, QuadrupletCreator, NodeType, RelationType, create_id
 from src.utils.wikidata_utils import WikidataMapper
 
 def hydrate_in_memory_graph(kg_model: KnowledgeGraphModel, mapper: WikidataMapper, data_path: str):
@@ -24,7 +24,7 @@ def hydrate_in_memory_graph(kg_model: KnowledgeGraphModel, mapper: WikidataMappe
     with open(full_txt_path, 'r', encoding='utf-8') as f:
         lines = f.readlines()
         
-        for line in tqdm(lines, desc="Processing triplets"):
+        for line in tqdm(lines, desc="Processing quadruplets"):
             parts = line.strip().split('\t')
             if len(parts) >= 3:
                 s_id, r_id, o_id = parts[0], parts[1], parts[2]
@@ -59,7 +59,7 @@ def hydrate_in_memory_graph(kg_model: KnowledgeGraphModel, mapper: WikidataMappe
                     connector.strid_nodes_index[o_id].add(new_id)
                     connector.strid_nodes_index[o_node.id].add(new_id)
 
-                # Create Relation and Triplet
+                # Create Relation and Quadruplet
                 s_node = connector.nodes[internal_node_ids[s_id]]
                 o_node = connector.nodes[internal_node_ids[o_id]]
                 
@@ -67,14 +67,17 @@ def hydrate_in_memory_graph(kg_model: KnowledgeGraphModel, mapper: WikidataMappe
                 rel = RelationCreator.create(RelationType.simple, r_name, prop={'wd_id': r_id})
                 
                 time_str = f"{t1}-{t2}" if t1 and t2 and t1 != t2 else (t1 or t2)
-                time_node = NodeCreator.create(NodeType.time, time_str) if time_str else None
+                time_node = None
+                if time_str:
+                     time_node = NodeCreator.create(NodeType.time, time_str)
                 
-                triplet = TripletCreator.create(s_node, rel, o_node, time=time_node)
+                quadruplet = QuadrupletCreator.create(s_node, rel, o_node, time=time_node)
                 
-                # Add triplet to connector
+                # Add quadruplet to connector
+                # Updated to use 'connector.quadruplets' and 'qid_quadruplets_index'
                 t_internal_id = connector.generate_id()
-                connector.triplets[t_internal_id] = triplet
-                connector.tid_triplets_index[triplet.id].add(t_internal_id)
+                connector.quadruplets[t_internal_id] = quadruplet
+                connector.qid_quadruplets_index[quadruplet.id].add(t_internal_id)
                 
                 # Add relationship to edges
                 sn_internal_id = internal_node_ids[s_id]
@@ -85,4 +88,4 @@ def hydrate_in_memory_graph(kg_model: KnowledgeGraphModel, mapper: WikidataMappe
                 connector.edges[en_internal_id].add(t_internal_id)
                 connector.adjacent_nodes[en_internal_id].add(sn_internal_id)
 
-    print(f"Hydration complete. Nodes: {len(connector.nodes)}, Triplets: {len(connector.triplets)}")
+    print(f"Hydration complete. Nodes: {len(connector.nodes)}, Quadruplets: {len(connector.quadruplets)}")

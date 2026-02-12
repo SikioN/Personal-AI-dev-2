@@ -1,41 +1,37 @@
-from .WaterCirclesTripletsRetriever import WaterCirclesRetriever, WaterCirclesSearchConfig
-from .MixturedTripletsRetriever import MixturedTripletsRetriever, MixturedGraphSearchConfig
-from .TripletsFilter import TripletsFilter, TripletsFilterConfig
-from .AStarTripletsRetriever import AStarTripletsRetriever, AStarGraphSearchConfig
-from .NaiveBFSTripletsRetriever import NaiveBFSTripletsRetriever, NaiveBFSGraphSearchConfig
-from .NaiveTripletsRetriever import NaiveTripletsRetriever, NaiveGraphSearchConfig
-from .BeamSearchTripletsRetriever import BeamSearchTripletsRetriever, GraphBeamSearchConfig
+from .WaterCirclesQuadrupletsRetriever import WaterCirclesQuadrupletsRetriever, WaterCirclesSearchConfig
+from .MixturedQuadrupletsRetriever import MixturedTripletsRetriever, MixturedGraphSearchConfig
+from .QuadrupletsFilter import QuadrupletsFilter, QuadrupletsFilterConfig
+from .AStarQuadrupletsRetriever import AStarTripletsRetriever, AStarGraphSearchConfig
+from .NaiveBFSQuadrupletsRetriever import NaiveBFSTripletsRetriever, NaiveBFSGraphSearchConfig
+from .NaiveQuadrupletsRetriever import NaiveTripletsRetriever, NaiveGraphSearchConfig
+from .BeamSearchQuadrupletsRetriever import BeamSearchTripletsRetriever, GraphBeamSearchConfig
 
-KR_MAIN_LOG_PATH = 'log/qa/kg_reasoner/weak/knowledge_retriever/main'
+KR_MAIN_LOG_PATH = "logs/knowledge_retriever/main.log"
 
-AVAILABLE_TRIPLETS_RETRIEVERS  = {
+AVAILABLE_QUADRUPLETS_RETRIEVERS = {
     'astar': {
         'config': AStarGraphSearchConfig,
         'class': AStarTripletsRetriever},
-
-    'watercircles': {
+    'water_circles': {
         'config': WaterCirclesSearchConfig,
-        'class': WaterCirclesRetriever},
-
-    'mixture': {
+        'class': WaterCirclesQuadrupletsRetriever
+    },
+    'mixtured': {
         'config': MixturedGraphSearchConfig,
         'class': MixturedTripletsRetriever},
-
     'naive_bfs': {
         'config': NaiveBFSGraphSearchConfig,
         'class': NaiveBFSTripletsRetriever},
-
-    'naive_retriever': {
+    'naive': {
         'config': NaiveGraphSearchConfig,
         'class': NaiveTripletsRetriever},
-
     'beamsearch': {
         'config': GraphBeamSearchConfig,
         'class': BeamSearchTripletsRetriever}
 }
 
-AVAILABLE_TRIPLETS_FILTERS = {
+AVAILABLE_QUADRUPLETS_FILTERS = {
     'naive': {
-        'config': TripletsFilterConfig,
-        'class': TripletsFilter}
+        'config': QuadrupletsFilterConfig,
+        'class': QuadrupletsFilter}
 }

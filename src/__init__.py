@@ -2,5 +2,5 @@
 
 from .kg_model import EmbedderModelConfig, EmbeddingsModelConfig, GraphModelConfig
 
-from .pipelines.qa import QAPipelineConfig
-from .pipelines.memorize import MemPipelineConfig
+# from .pipelines.qa import QAPipelineConfig
+# from .pipelines.memorize import MemPipelineConfig

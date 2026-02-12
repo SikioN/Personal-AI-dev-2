@@ -1,34 +1,37 @@
 from typing import List, Dict, Set
 
-from ......utils import Triplet
+from ......utils import Quadruplet
 from ......utils.data_structs import create_id
 
-def rt_custom_formate(base_triplet: Triplet, incident_triplets: List[Triplet]) -> Dict[str,str]:
-    if len(incident_triplets) < 1:
+def rt_quadruplet_custom_formate(base_quadruplet: Quadruplet, incident_quadruplets: List[Quadruplet]) -> Dict[str,str]:
+    if len(incident_quadruplets) < 1:
         raise ValueError
 
-    def _custom_thesis_stringify(triplet: Triplet) -> str:
-        return triplet.end_node.name
+    def _custom_thesis_stringify(quadruplet: Quadruplet) -> str:
+        time_str = f" (Time: {quadruplet.time.name})" if quadruplet.time else ""
+        return f"{quadruplet.end_node.name}{time_str}"
 
-    new_str_thesise = f'["{_custom_thesis_stringify(base_triplet)}"]'
-    existing_str_thesises = '[' +', '.join(map(lambda triplet: f'"{_custom_thesis_stringify(triplet)}"', incident_triplets)) + ']'
+    new_str_thesis = f'["{_custom_thesis_stringify(base_quadruplet)}"]'
+    existing_str_thesises = '[' +', '.join(map(lambda q: f'"{_custom_thesis_stringify(q)}"', incident_quadruplets)) + ']'
 
-    return {'ex_thesises': existing_str_thesises, 'new_thesises': new_str_thesise}
+    return {'ex_thesises': existing_str_thesises, 'new_thesises': new_str_thesis}
 
-def rt_custom_postprocess(parsed_response: Dict[str, Set[str]], base_triplet: Triplet, incident_triplets: List[Triplet]) -> List[str]:
-    if len(incident_triplets) < 1:
+def rt_quadruplet_custom_postprocess(parsed_response: Dict[str, Set[str]], base_quadruplet: Quadruplet, incident_quadruplets: List[Quadruplet]) -> List[str]:
+    if len(incident_quadruplets) < 1:
         raise ValueError
 
-    def _custom_thesis_stringify(triplet: Triplet) -> str:
-        return triplet.end_node.name
+    def _custom_thesis_stringify(quadruplet: Quadruplet) -> str:
+        time_str = f" (Time: {quadruplet.time.name})" if quadruplet.time else ""
+        return f"{quadruplet.end_node.name}{time_str}"
 
-    custom_ids_to_triplets = {create_id(_custom_thesis_stringify(triplet)): triplet for triplet in incident_triplets}
-    base_triplet_custom_id = create_id(_custom_thesis_stringify(base_triplet))
-    obsolete_str_ids = parsed_response.get(base_triplet_custom_id, [])
+    custom_ids_to_quadruplets = {create_id(_custom_thesis_stringify(q)): q for q in incident_quadruplets}
+    
+    base_quadruplet_custom_id = create_id(_custom_thesis_stringify(base_quadruplet))
+    obsolete_str_ids = parsed_response.get(base_quadruplet_custom_id, [])
 
-    triplet_ids_to_remove = []
-    for custom_id in custom_ids_to_triplets.keys():
+    quadruplet_ids_to_remove = []
+    for custom_id in custom_ids_to_quadruplets.keys():
         if custom_id in obsolete_str_ids:
-            triplet_ids_to_remove.append(custom_ids_to_triplets[custom_id].id)
+            quadruplet_ids_to_remove.append(custom_ids_to_quadruplets[custom_id].id)
 
-    return triplet_ids_to_remove
+    return quadruplet_ids_to_remove

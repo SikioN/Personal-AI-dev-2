@@ -7,7 +7,7 @@ from .config import CAGEN_MAIN_LOG_PATH, DEFAULT_CAGEN_TASK_CONFIG
 from ......utils.errors import STATUS_MESSAGE
 from ......utils import ReturnInfo, Logger, AgentTaskSolverConfig, AgentTaskSolver
 from ......agents import AgentDriver, AgentDriverConfig
-from ......utils.data_structs import create_id, Triplet, TripletCreator
+from ......utils.data_structs import create_id, Quadruplet, QuadrupletCreator
 from ......db_drivers.kv_driver import KeyValueDriverConfig
 from ......utils.cache_kv import CacheKV, CacheUtils
 from ......utils import ReturnStatus 
@@ -48,19 +48,25 @@ class ClueAnswerGenerator(CacheUtils):
         self.log = self.config.log
         self.verbose = self.config.verbose
 
-    def get_cache_key(self, query: str, context_triplets: List[Triplet]) -> List[object]:
-        str_triplets = hashlib.sha1("\n".join(sorted([TripletCreator.stringify(triplet)[1] for triplet in context_triplets])).encode()).hexdigest()
-        return [self.config.to_str(), query, str_triplets]
+    def get_cache_key(self, query: str, context_quadruplets: List[Quadruplet]) -> List[object]:
+        str_quadruplets = hashlib.sha1("\n".join(sorted([QuadrupletCreator.stringify(quadruplet)[1] for quadruplet in context_quadruplets])).encode()).hexdigest()
+        return [self.config.to_str(), query, str_quadruplets]
 
     @CacheUtils.cache_method_output
-    def perform(self, query: str, context_triplets: List[Triplet]) -> Tuple[List[str], ReturnInfo]:
+    def perform(self, query: str, context_quadruplets: List[Quadruplet]) -> Tuple[List[str], ReturnInfo]:
+        """
+        :param query: Вопрос к системе, для которого необходимо сгенерировать ответ.
+        :type query: str
+        :param context_quadruplets: Набор квадруплетов в качестве контекста.
+        :type context_quadruplets: List[Quadruplet]
+        """
         info = ReturnInfo()
         self.log("START CLUE-ANSWER GENRATION ...", verbose=self.config.verbose)
         self.log(f"BASE_QUESTION ID: {create_id(query)}", verbose=self.config.verbose)
         self.log(f"BASE_QUESTION: {query}", verbose=self.config.verbose)
-        self.log(f"CONTEXT_TRIPLETS:",verbose=self.config.verbose)
-        for triplet in context_triplets:
-            self.log(f"*[{triplet.id}] {triplet}", verbose=self.config.verbose)
+        self.log(f"CONTEXT_QUADRUPLETS:",verbose=self.config.verbose)
+        for quadruplet in context_quadruplets:
+            self.log(f"*[{quadruplet.id}] {quadruplet}", verbose=self.config.verbose)
 
         self.log("Выполнение условной генерации ответа на вопрос с помощью LLM-агента...", verbose=self.config.verbose)
         answer, status = self.cagen_solver.solve(

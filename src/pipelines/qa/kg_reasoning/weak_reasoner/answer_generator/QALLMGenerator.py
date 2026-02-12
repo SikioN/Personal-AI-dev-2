@@ -5,7 +5,7 @@ import hashlib
 
 from .configs import DEFAULT_AG_TASK_CONFIG, AG_MAIN_LOG_PATH
 
-from ......utils.data_structs import Triplet, RelationType, create_id, TripletCreator
+from ......utils.data_structs import Quadruplet, RelationType, create_id, QuadrupletCreator
 from ......utils.errors import STATUS_MESSAGE
 from ......agents import AgentDriver, AgentDriverConfig
 from ......utils import Logger, ReturnInfo, ReturnStatus, AgentTaskSolverConfig, AgentTaskSolver
@@ -73,12 +73,12 @@ class QALLMGenerator(CacheUtils):
         self.answer_generator_solver = AgentTaskSolver(
             self.agent, self.config.ag_task_config, ag_task_cache_config)
 
-    def get_cache_key(self, query: str, context_triplets: List[Triplet]) -> List[object]:
-        str_triplets = hashlib.sha1("\n".join(sorted([TripletCreator.stringify(triplet)[1] for triplet in context_triplets])).encode()).hexdigest()
-        return [self.config.to_str(), query, str_triplets]
+    def get_cache_key(self, query: str, context_quadruplets: List[Quadruplet]) -> List[object]:
+        str_quadruplets = hashlib.sha1("\n".join(sorted([QuadrupletCreator.stringify(quadruplet)[1] for quadruplet in context_quadruplets])).encode()).hexdigest()
+        return [self.config.to_str(), query, str_quadruplets]
 
     @CacheUtils.cache_method_output
-    def generate(self, query: str, context_triplets: List[Triplet]) -> Tuple[str, ReturnInfo]:
+    def generate(self, query: str, context_quadruplets: List[Quadruplet]) -> Tuple[str, ReturnInfo]:
         """Метод предназначен для условной генерации ответа на вопрос.
 
         :param query: Вопрос на естественном языке.

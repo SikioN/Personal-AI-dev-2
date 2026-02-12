@@ -3,7 +3,7 @@ import torch.nn as nn
 import numpy as np
 from typing import List, Dict, Optional, Tuple, Union
 from dataclasses import dataclass, field
-from src.utils.data_structs import Node, Relation, Triplet
+from src.utils.data_structs import Node, Relation, Quadruplet
 from src.utils import Logger
 import os
 
@@ -121,12 +121,12 @@ class TemporalReasoner:
         self.rel_to_idx = rel_to_idx
         self.time_to_idx = time_to_idx
 
-    def score_fact(self, triplet: Triplet) -> float:
-        """Оценка достоверности триплета во времени."""
-        s = self.entity_to_idx.get(triplet.start_node.id)
-        r = self.rel_to_idx.get(triplet.relation.id)
-        o = self.entity_to_idx.get(triplet.end_node.id)
-        t = self.time_to_idx.get(triplet.time.id) if triplet.time else None
+    def score_fact(self, quadruplet: Quadruplet) -> float:
+        """Оценка достоверности квадруплета во времени."""
+        s = self.entity_to_idx.get(quadruplet.start_node.id)
+        r = self.rel_to_idx.get(quadruplet.relation.id)
+        o = self.entity_to_idx.get(quadruplet.end_node.id)
+        t = self.time_to_idx.get(quadruplet.time.id) if quadruplet.time else None
 
         if None in [s, r, o, t]:
             return 0.0

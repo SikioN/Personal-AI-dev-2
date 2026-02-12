@@ -1,6 +1,6 @@
 from ......utils import AgentTaskSolverConfig, Logger
 from ......db_drivers.kv_driver import KeyValueDriverConfig
-from .general_parsers import etriplets_custom_postprocess, etriplets_custom_formate
+from .general_parsers import equadruplets_custom_postprocess, equadruplets_custom_formate
 from .v2 import TRIPLET_EXTRACT_SUITE_V2
 from .v1 import TRIPLET_EXTRACT_SUITE_V1
 
@@ -21,6 +21,6 @@ class AgentTripletExtrTaskConfigSelector:
         return AgentTaskSolverConfig(
             version=base_config_version,
             suites=AVAILABLE_TRIPLET_EXTRACT_TCONFIGS[base_config_version],
-            formate_context_func=etriplets_custom_formate, postprocess_answer_func=etriplets_custom_postprocess,
+            formate_context_func=equadruplets_custom_formate, postprocess_answer_func=equadruplets_custom_postprocess,
             cache_table_name=cache_table_name,
             log=Logger(TRIPLET_EXTR_LOG_PATH))

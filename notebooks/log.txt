@@ -1,0 +1,43 @@
+Initializing Knowledge Graph Model...
+Query failed: {neo4j_code: Neo.ClientError.Statement.UnsupportedAdministrationCommand} {message: Unsupported administration command: CREATE DATABASE personalaidb IF NOT EXISTS} {gql_status: 50N42} {gql_status_description: error: general processing exception - unexpected error. Unsupported administration command: CREATE DATABASE personalaidb IF NOT EXISTS}
+Error query:  CREATE DATABASE personalaidb IF NOT EXISTS
+Query failed: {neo4j_code: Neo.ClientError.Database.DatabaseNotFound} {message: Database does not exist. Database name: 'personalaidb'.} {gql_status: 50N42} {gql_status_description: error: general processing exception - unexpected error. Database does not exist. Database name: 'personalaidb'.}
+Error query:  CREATE INDEX name_object_node IF NOT EXISTS FOR (n:object) ON n.name
+Query failed: {neo4j_code: Neo.ClientError.Database.DatabaseNotFound} {message: Database does not exist. Database name: 'personalaidb'.} {gql_status: 50N42} {gql_status_description: error: general processing exception - unexpected error. Database does not exist. Database name: 'personalaidb'.}
+Error query:  CREATE INDEX name_hyper_node IF NOT EXISTS FOR (n:hyper) ON n.name 
+Query failed: {neo4j_code: Neo.ClientError.Database.DatabaseNotFound} {message: Database does not exist. Database name: 'personalaidb'.} {gql_status: 50N42} {gql_status_description: error: general processing exception - unexpected error. Database does not exist. Database name: 'personalaidb'.}
+Error query:  CREATE INDEX name_episodic_node IF NOT EXISTS FOR (n:episodic) ON n.name
+Query failed: {neo4j_code: Neo.ClientError.Database.DatabaseNotFound} {message: Database does not exist. Database name: 'personalaidb'.} {gql_status: 50N42} {gql_status_description: error: general processing exception - unexpected error. Database does not exist. Database name: 'personalaidb'.}
+Error query:  CREATE INDEX name_time_node IF NOT EXISTS FOR (n:time) ON n.name
+Query failed: {neo4j_code: Neo.ClientError.Database.DatabaseNotFound} {message: Database does not exist. Database name: 'personalaidb'.} {gql_status: 50N42} {gql_status_description: error: general processing exception - unexpected error. Database does not exist. Database name: 'personalaidb'.}
+Error query:  CREATE INDEX strid_object_node IF NOT EXISTS FOR (n:object) ON n.str_id
+Query failed: {neo4j_code: Neo.ClientError.Database.DatabaseNotFound} {message: Database does not exist. Database name: 'personalaidb'.} {gql_status: 50N42} {gql_status_description: error: general processing exception - unexpected error. Database does not exist. Database name: 'personalaidb'.}
+Error query:  CREATE INDEX strid_hyper_node IF NOT EXISTS FOR (n:hyper) ON n.str_id
+Query failed: {neo4j_code: Neo.ClientError.Database.DatabaseNotFound} {message: Database does not exist. Database name: 'personalaidb'.} {gql_status: 50N42} {gql_status_description: error: general processing exception - unexpected error. Database does not exist. Database name: 'personalaidb'.}
+Error query:  CREATE INDEX strid_episodic_node IF NOT EXISTS FOR (n:episodic) ON n.str_id
+Query failed: {neo4j_code: Neo.ClientError.Database.DatabaseNotFound} {message: Database does not exist. Database name: 'personalaidb'.} {gql_status: 50N42} {gql_status_description: error: general processing exception - unexpected error. Database does not exist. Database name: 'personalaidb'.}
+Error query:  CREATE INDEX strid_time_node IF NOT EXISTS FOR (n:time) ON n.str_id
+Query failed: {neo4j_code: Neo.ClientError.Database.DatabaseNotFound} {message: Database does not exist. Database name: 'personalaidb'.} {gql_status: 50N42} {gql_status_description: error: general processing exception - unexpected error. Database does not exist. Database name: 'personalaidb'.}
+Error query:  CREATE INDEX strid_simple_relation IF NOT EXISTS FOR ()-[r:simple]->() ON r.str_id
+Query failed: {neo4j_code: Neo.ClientError.Database.DatabaseNotFound} {message: Database does not exist. Database name: 'personalaidb'.} {gql_status: 50N42} {gql_status_description: error: general processing exception - unexpected error. Database does not exist. Database name: 'personalaidb'.}
+Error query:  CREATE INDEX strid_hyper_relation IF NOT EXISTS FOR ()-[r:hyper]->() ON r.str_id 
+Query failed: {neo4j_code: Neo.ClientError.Database.DatabaseNotFound} {message: Database does not exist. Database name: 'personalaidb'.} {gql_status: 50N42} {gql_status_description: error: general processing exception - unexpected error. Database does not exist. Database name: 'personalaidb'.}
+Error query:  CREATE INDEX strid_episodic_relation IF NOT EXISTS FOR ()-[r:episodic]->() ON r.str_id
+Query failed: {neo4j_code: Neo.ClientError.Database.DatabaseNotFound} {message: Database does not exist. Database name: 'personalaidb'.} {gql_status: 50N42} {gql_status_description: error: general processing exception - unexpected error. Database does not exist. Database name: 'personalaidb'.}
+Error query:  CREATE INDEX strid_time_relation IF NOT EXISTS FOR ()-[r:time]->() ON r.str_id
+Query failed: {neo4j_code: Neo.ClientError.Database.DatabaseNotFound} {message: Database does not exist. Database name: 'personalaidb'.} {gql_status: 50N42} {gql_status_description: error: general processing exception - unexpected error. Database does not exist. Database name: 'personalaidb'.}
+Error query:  CREATE INDEX tid_simple_relation IF NOT EXISTS FOR ()-[r:simple]->() ON r.t_id
+Query failed: {neo4j_code: Neo.ClientError.Database.DatabaseNotFound} {message: Database does not exist. Database name: 'personalaidb'.} {gql_status: 50N42} {gql_status_description: error: general processing exception - unexpected error. Database does not exist. Database name: 'personalaidb'.}
+Error query:  CREATE INDEX tid_hyper_relation IF NOT EXISTS FOR ()-[r:hyper]->() ON r.t_id
+Query failed: {neo4j_code: Neo.ClientError.Database.DatabaseNotFound} {message: Database does not exist. Database name: 'personalaidb'.} {gql_status: 50N42} {gql_status_description: error: general processing exception - unexpected error. Database does not exist. Database name: 'personalaidb'.}
+Error query:  CREATE INDEX tid_episodic_relation IF NOT EXISTS FOR ()-[r:episodic]->() ON r.t_id
+Query failed: {neo4j_code: Neo.ClientError.Database.DatabaseNotFound} {message: Database does not exist. Database name: 'personalaidb'.} {gql_status: 50N42} {gql_status_description: error: general processing exception - unexpected error. Database does not exist. Database name: 'personalaidb'.}
+Error query:  CREATE INDEX tid_time_relation IF NOT EXISTS FOR ()-[r:time]->() ON r.t_id
+Query failed: {neo4j_code: Neo.ClientError.Database.DatabaseNotFound} {message: Database does not exist. Database name: 'personalaidb'.} {gql_status: 50N42} {gql_status_description: error: general processing exception - unexpected error. Database does not exist. Database name: 'personalaidb'.}
+Error query:  CREATE INDEX name_simple_relation IF NOT EXISTS FOR ()-[r:simple]->() ON r.name
+Query failed: {neo4j_code: Neo.ClientError.Database.DatabaseNotFound} {message: Database does not exist. Database name: 'personalaidb'.} {gql_status: 50N42} {gql_status_description: error: general processing exception - unexpected error. Database does not exist. Database name: 'personalaidb'.}
+Error query:  CREATE INDEX name_hyper_relation IF NOT EXISTS FOR ()-[r:hyper]->() ON r.name
+Query failed: {neo4j_code: Neo.ClientError.Database.DatabaseNotFound} {message: Database does not exist. Database name: 'personalaidb'.} {gql_status: 50N42} {gql_status_description: error: general processing exception - unexpected error. Database does not exist. Database name: 'personalaidb'.}
+Error query:  CREATE INDEX name_episodic_relation IF NOT EXISTS FOR ()-[r:episodic]->() ON r.name
+Query failed: {neo4j_code: Neo.ClientError.Database.DatabaseNotFound} {message: Database does not exist. Database name: 'personalaidb'.} {gql_status: 50N42} {gql_status_description: error: general processing exception - unexpected error. Database does not exist. Database name: 'personalaidb'.}
+Error query:  CREATE INDEX name_time_relation IF NOT EXISTS FOR ()-[r:time]->() ON r.name

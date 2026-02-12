@@ -6,7 +6,7 @@ from src.utils.device_utils import get_device
 
 @dataclass
 class EmbedderModelConfig:
-    model_name_or_path: str = '../models/intfloat/multilingual-e5-small'
+    model_name_or_path: str = 'intfloat/multilingual-e5-small'
     prompts: Dict = field(default_factory=lambda: {"query": "query: ", "document": "passage: "})
     device: str = field(default_factory=get_device)
     normalize_embeddings: bool = True

@@ -15,7 +15,7 @@ class BaseDatabaseConfig:
     :param need_to_clear: Если True, то после успешного подключения к базе данных содержимое указанной таблицы будет удалено. Значения по умолчанию False.
     :type need_to_clear: bool
     """
-    db_info: Dict = field(default_factory=lambda: {'db': 'personalaidb', 'table': 'personalaitable'})
+    db_info: Dict = field(default_factory=lambda: {'db': 'neo4j', 'table': 'personalaitable'})
     params: Dict = field(default_factory=lambda: dict())
     need_to_clear: bool = False
 

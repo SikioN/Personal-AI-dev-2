@@ -1,6 +1,6 @@
 from ......utils import AgentTaskSolverConfig, Logger
 from ......db_drivers.kv_driver import KeyValueDriverConfig
-from .general_parsers import ethesises_custom_formate, ethesises_custom_postprocess
+from .general_parsers import equadruplets_thesis_custom_formate, equadruplets_thesis_custom_postprocess
 from .v1 import THESIS_EXTRACT_SUITE_V1
 from .v2 import THESIS_EXTRACT_SUITE_V2
 
@@ -21,6 +21,6 @@ class AgentThesisExtrTaskConfigSelector:
         return AgentTaskSolverConfig(
             version=base_config_version,
             suites=AVAILABLE_THESIS_EXTRACT_TCONFIGS[base_config_version],
-            formate_context_func=ethesises_custom_formate, postprocess_answer_func=ethesises_custom_postprocess,
+            formate_context_func=equadruplets_thesis_custom_formate, postprocess_answer_func=equadruplets_thesis_custom_postprocess,
             cache_table_name=cache_table_name,
             log=Logger(THESIS_EXTR_LOG_PATH))

@@ -5,7 +5,7 @@ from tqdm import tqdm
 from .kg_model import KnowledgeGraphModel, KnowledgeGraphModelConfig
 from .pipelines.qa import QAPipeline, QAPipelineConfig
 from .pipelines.memorize import MemPipeline, MemPipelineConfig
-from .utils import Logger, ReturnInfo, Triplet
+from .utils import Logger, ReturnInfo, Quadruplet
 from .utils.data_structs import create_id
 from .db_drivers.kv_driver import KeyValueDriverConfig
 
@@ -64,7 +64,7 @@ class PersonalAI:
         self.log(f"RESULT:\n* FINAL ANSWER - {answer}", verbose=self.config.verbose)
         return answer, info
 
-    def update_memory(self, text: str, text_properties: Dict) -> Tuple[List[Triplet], ReturnInfo]:
+    def update_memory(self, text: str, text_properties: Dict) -> Tuple[List[Quadruplet], ReturnInfo]:
         """Метод предназначен для добавления новой информации в память (граф знаний) и её актуализацию.
 
         :param text: Слабоструктурированный текст на естественном языке.
@@ -72,7 +72,7 @@ class PersonalAI:
         :param text_properties: Набор свойств данного текста, который необходимо дополнительно сохранить в память ассистента.
         :type text_properties: Dict
         :return: Кортеж из двух объектов: (1) список извлечённой из текста информации (в виде триплетов), который использовался для обновления/актуализации памяти ассистента; (2) статус завершения операции с пояснительной информацией.
-        :rtype: Tuple[List[Triplet], ReturnInfo]
+        :rtype: Tuple[List[Quadruplet], ReturnInfo]
         """
         self.log("START MEMORY_UPDATING ...", verbose=self.config.verbose)
         self.log(f"BASE_TEXT ID: {create_id(text)}", verbose=self.config.verbose)

@@ -1,6 +1,6 @@
 from typing import List, Dict, Set, Tuple, Optional
 from src.kg_model.knowledge_graph_model import KnowledgeGraphModel
-from src.utils.data_structs import Triplet, TripletCreator, Node, Relation
+from src.utils.data_structs import Quadruplet, QuadrupletCreator, Node, Relation
 import networkx as nx
 
 class KGNavigator:
@@ -8,38 +8,52 @@ class KGNavigator:
     def __init__(self, kg_model: KnowledgeGraphModel):
         self.kg_model = kg_model
 
-    def get_neighborhood(self, node_ids: List[str], depth: int = 1) -> List[Triplet]:
-        """Fetch all triplets connected to the given nodes within specified depth."""
-        all_triplets = []
+    def get_neighborhood(self, node_ids: List[str], depth: int = 1) -> List[Quadruplet]:
+        """Fetch all quadruplets connected to the given nodes within specified depth."""
+        all_quadruplets = []
         visited_nodes = set(node_ids)
         current_layer = set(node_ids)
+        
+        print(f"DEBUG: [KGNavigator] Getting neighborhood for {node_ids} at depth {depth}")
         
         for d in range(depth):
             next_layer = set()
             for node_id in current_layer:
                 # Get adjacent node IDs
-                adj_ids = self.kg_model.graph_struct.db_conn.get_adjecent_nids(node_id)
+                try:
+                    adj_ids = self.kg_model.graph_struct.db_conn.get_adjecent_nids(node_id)
+                    print(f"DEBUG: [KGNavigator] Node {node_id} has {len(adj_ids)} adjacent nodes")
+                except Exception as e:
+                    print(f"DEBUG: [KGNavigator] Error getting adjacent nodes for {node_id}: {e}")
+                    adj_ids = []
+
                 for adj_id in adj_ids:
-                    # Get triplets between node_id and adj_id
-                    triplets = self.kg_model.graph_struct.db_conn.get_triplets(node_id, adj_id)
-                    all_triplets.extend(triplets)
+                    # Get quadruplets between node_id and adj_id
+                    try:
+                        quadruplets = self.kg_model.graph_struct.db_conn.get_quadruplets(node_id, adj_id)
+                        all_quadruplets.extend(quadruplets)
+                    except Exception as e:
+                        print(f"DEBUG: [KGNavigator] Error getting quadruplets between {node_id} and {adj_id}: {e}")
+                    
                     if adj_id not in visited_nodes:
                         next_layer.add(adj_id)
                         visited_nodes.add(adj_id)
             current_layer = next_layer
-        return all_triplets
+        
+        print(f"DEBUG: [KGNavigator] Total quadruplets found: {len(all_quadruplets)}")
+        return all_quadruplets
 
-    def triplets_to_nx(self, triplets: List[Triplet]) -> nx.MultiDiGraph:
-        """Convert a list of Triplets to a NetworkX graph."""
+    def quadruplets_to_nx(self, quadruplets: List[Quadruplet]) -> nx.MultiDiGraph:
+        """Convert a list of Quadruplets to a NetworkX graph."""
         G = nx.MultiDiGraph()
-        for t in triplets:
-            s_id = t.start_node.id
-            o_id = t.end_node.id
-            r_name = t.relation.name
-            t_name = t.time.name if t.time else ""
+        for q in quadruplets:
+            s_id = q.start_node.id
+            o_id = q.end_node.id
+            r_name = q.relation.name
+            t_name = q.time.name if q.time else ""
             
-            G.add_node(s_id, label=t.start_node.name, type=t.start_node.type)
-            G.add_node(o_id, label=t.end_node.name, type=t.end_node.type)
+            G.add_node(s_id, label=q.start_node.name, type=q.start_node.type)
+            G.add_node(o_id, label=q.end_node.name, type=q.end_node.type)
             
             edge_label = r_name
             if t_name:

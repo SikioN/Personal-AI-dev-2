@@ -1,6 +1,6 @@
 from ......utils import AgentTaskSolverConfig, Logger
 from ......db_drivers.kv_driver import KeyValueDriverConfig
-from .general_parsers import rs_custom_formate, rs_custom_postprocess
+from .general_parsers import rs_quadruplet_custom_formate, rs_quadruplet_custom_postprocess
 from .v1 import REPLACE_SIMPLE_SUITE_V1
 
 REPLACE_SIMPLE_LOG_PATH = 'log/memorize/updator/agent_tasks/replace_simple_triplets'
@@ -19,6 +19,6 @@ class AgentReplSimpleTripletTaskConfigSelector:
         return AgentTaskSolverConfig(
             version=base_config_version,
             suites=AVAILABLE_REPLACE_SIMPLE_TCONFIGS[base_config_version],
-            formate_context_func=rs_custom_formate, postprocess_answer_func=rs_custom_postprocess,
+            formate_context_func=rs_quadruplet_custom_formate, postprocess_answer_func=rs_quadruplet_custom_postprocess,
             cache_table_name=cache_table_name,
             log=Logger(REPLACE_SIMPLE_LOG_PATH))

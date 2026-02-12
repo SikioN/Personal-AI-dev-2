@@ -13,7 +13,7 @@ from .configs import DEFAULT_SUMMN_TASK_CONFIG, NODESTREE_MODEL_LOG_PATH, \
     SUMMNODES_VDB_DEFAULT_DRIVER_CONFIG, LEAFNODES_VDB_DEFAULT_DRIVER_CONFIG, \
         TREE_DB_DEFAULT_DRIVER_CONFIG
 from ...utils import Logger, AgentTaskSolver, AgentTaskSolverConfig, ReturnStatus
-from ...utils.data_structs import Triplet, NodeType, create_id
+from ...utils.data_structs import Quadruplet, NodeType, create_id
 from ...utils.errors import ReturnStatus
 from ...agents import AgentDriver, AgentDriverConfig
 from ...db_drivers.kv_driver import KeyValueDriverConfig
@@ -110,30 +110,30 @@ class NodesTreeModel:
         assert leaf_vnodes_count == tnodes_count['leaf']
         assert summ_vnodes_count == tnodes_count['summarized']
 
-    def expand_tree(self, triplets: List[Triplet], status_bar: bool = True) -> Dict[str, Set[str]]:
+    def expand_tree(self, quadruplets: List[Quadruplet], status_bar: bool = True) -> Dict[str, Set[str]]:
         """_summary_
 
-        :param triplets: _description_
-        :type triplets: List[Triplet]
+        :param quadruplets: _description_
+        :type quadruplets: List[Quadruplet]
         :param status_bar: _description_, defaults to True
         :type status_bar: bool, optional
         :return: _description_
         :rtype: Dict[str, Set[str]]
         """
-        self.log("Старт операции по добавлению object-вершин из заданных триплетов в дерево...", verbose=self.verbose)
+        self.log("Старт операции по добавлению object-вершин из заданных квадруплетов в дерево...", verbose=self.verbose)
 
         self.log("1. Отбираем уникальные object-вершины...", verbose=self.verbose)
         unique_object_nodes = dict()
-        for triplet in triplets:
-            cur_node = triplet.start_node
+        for quadruplet in quadruplets:
+            cur_node = quadruplet.start_node
             if cur_node.type == NodeType.object:
                 unique_object_nodes[cur_node.id] = cur_node
 
-            cur_node = triplet.end_node
+            cur_node = quadruplet.end_node
             if cur_node.type == NodeType.object:
                 unique_object_nodes[cur_node.id] = cur_node
         object_nodes = unique_object_nodes.values()
-        self.log(f"1.final | В {len(triplets)} триплетах (всего {len(triplets)*2} вершин) содержится {len(object_nodes)} уникальных (по строковому представлению) object-вершин.", verbose=self.verbose)
+        self.log(f"1.final | В {len(quadruplets)} квадруплетах (всего {len(quadruplets)*2} вершин) содержится {len(object_nodes)} уникальных (по строковому представлению) object-вершин.", verbose=self.verbose)
 
         self.log(f"2. Добавляем отобранные object-вершины в дерево ({len(object_nodes)})...", verbose=self.verbose)
         process = tqdm(object_nodes) if status_bar else object_nodes
@@ -515,7 +515,7 @@ class NodesTreeModel:
 
         return matched_nodes
 
-    def reduce_tree(self, triplets: List[Triplet], delete_info: Dict[int, Dict[str, bool]]):
+    def reduce_tree(self, quadruplets: List[Quadruplet], delete_info: Dict[int, Dict[str, bool]]):
         # TODO
         raise NotImplementedError
 

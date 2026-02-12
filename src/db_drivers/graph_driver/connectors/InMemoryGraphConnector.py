@@ -5,7 +5,7 @@ from time import time
 import hashlib
 
 from ..utils import GraphDBConnectionConfig, AbstractGraphDatabaseConnection
-from ....utils import Triplet, NodeType
+from ....utils import Quadruplet, NodeType
 from ....utils.data_structs import RelationType, Node
 
 DEFAULT_INMEMORYGRAPH_CONFIG = GraphDBConnectionConfig()
@@ -20,16 +20,16 @@ class InMemoryGraphConnector(AbstractGraphDatabaseConnection):
         self.adjacent_nodes = defaultdict(set)
 
         self.nodes = dict()
-        self.triplets = dict()
+        self.quadruplets = dict()
 
         self.strid_relation_index = defaultdict(set)
         self.strid_nodes_index = defaultdict(set)
-        self.tid_triplets_index = defaultdict(set)
+        self.qid_quadruplets_index = defaultdict(set)
 
     def is_open(self) -> bool:
         need_to_exist = [
-            'edges', 'adjacent_nodes', 'nodes', 'relations', 'triplets',
-            'strid_nodes_index', 'str_relation_index', 'tid_triplets_index']
+            'edges', 'adjacent_nodes', 'nodes', 'quadruplets',
+            'strid_nodes_index', 'str_relation_index', 'qid_quadruplets_index']
         condition = True
         for field in need_to_exist:
             condition = condition and hasattr(self, field)
@@ -40,57 +40,58 @@ class InMemoryGraphConnector(AbstractGraphDatabaseConnection):
         del self.adjacent_nodes
 
         del self.nodes
-        del self.triplets
+        del self.quadruplets
 
         del self.strid_nodes_index
         del self.strid_relation_index
-        del self.tid_triplets_index
+        del self.qid_quadruplets_index
         gc.collect()
 
     def generate_id(self, seed: str = None) -> str:
         return hashlib.md5((str(time()) if seed is None else seed).encode()).hexdigest()
 
-    def create(self, triplets: List[Triplet], creation_info: Dict[int,Dict[str,bool]] = dict()) -> None:
-        # triplet-ids checking
-        for triplet in triplets:
-            if type(triplet.id) is not str:
+    def create(self, quadruplets: List[Quadruplet], creation_info: Dict[int,Dict[str,bool]] = dict()) -> None:
+        # quadruplet-ids checking
+        for quadruplet in quadruplets:
+            if type(quadruplet.id) is not str:
                 raise ValueError
-        unique_ids = set(map(lambda triplet: triplet.id, triplets))
-        if len(triplets) != len(unique_ids):
+        unique_ids = set(map(lambda quadruplet: quadruplet.id, quadruplets))
+        if len(quadruplets) != len(unique_ids):
             raise ValueError
 
-        for i, triplet in enumerate(triplets):
+        for i, quadruplet in enumerate(quadruplets):
             cur_info = creation_info.get(i, None)
 
             #
             if cur_info is None or cur_info['s_node']:
                 new_node_id = self.generate_id()
-                self.strid_nodes_index[triplet.start_node.id].add(new_node_id)
-                self.nodes[new_node_id] = triplet.start_node
+                self.strid_nodes_index[quadruplet.start_node.id].add(new_node_id)
+                self.nodes[new_node_id] = quadruplet.start_node
 
             if cur_info is None or cur_info['e_node']:
                 new_node_id = self.generate_id()
-                self.strid_nodes_index[triplet.end_node.id].add(new_node_id)
-                self.nodes[new_node_id] = triplet.end_node
+                self.strid_nodes_index[quadruplet.end_node.id].add(new_node_id)
+                self.nodes[new_node_id] = quadruplet.end_node
 
-            sn_ids = list(self.strid_nodes_index[triplet.start_node.id])
-            en_ids = list(self.strid_nodes_index[triplet.end_node.id])
+            # Time node handling? For in-memory, we might just store it in quadruplet or add node if we want.
+            # Following the Neo4j pattern, we should probably add it as a node if it exists.
+            if (cur_info is None or cur_info.get('t_node', False)) and quadruplet.time:
+                new_node_id = self.generate_id()
+                self.strid_nodes_index[quadruplet.time.id].add(new_node_id)
+                self.nodes[new_node_id] = quadruplet.time
 
-            # NOTE: если в графе будет несколько вершин с одинаковым str_id,
-            # то нам необходимо их все соединить ребром с новой вершиной
-            # например:
-            # - есть два триплета (n1, rel1, n2) и (n2, rel2, n3) c пустой creation_info (пусть номера это str_id)
-            # - сначала стандартно полностью добавляем первый трипет
-            # - при добавлении второго триплета у нас вершина n2 в граф добавляется повторно с другим внутренним id (из-за пустого creation_info)
-            # - таким образом добавленную в граф вершину n3 нужно связать с вершиной n2 как из второго так и их первого триплетов
+
+            sn_ids = list(self.strid_nodes_index[quadruplet.start_node.id])
+            en_ids = list(self.strid_nodes_index[quadruplet.end_node.id])
+
             for sn_id in sn_ids:
                 for en_id in en_ids:
                     t_id = self.generate_id()
-                    self.tid_triplets_index[triplet.id].add(t_id)
-                    self.triplets[t_id] = triplet
+                    self.qid_quadruplets_index[quadruplet.id].add(t_id)
+                    self.quadruplets[t_id] = quadruplet
 
                     r_id = self.generate_id()
-                    self.strid_relation_index[triplet.relation.id].add(r_id)
+                    self.strid_relation_index[quadruplet.relation.id].add(r_id)
 
                     self.edges[sn_id].add(t_id)
                     self.adjacent_nodes[sn_id].add(en_id)
@@ -99,16 +100,16 @@ class InMemoryGraphConnector(AbstractGraphDatabaseConnection):
                     self.adjacent_nodes[en_id].add(sn_id)
 
 
-    def read(self, ids: List[str]) -> List[Triplet]:
-        triplets = []
+    def read(self, ids: List[str]) -> List[Quadruplet]:
+        quadruplets = []
         for id in ids:
             if type(id) is not str:
                 raise ValueError
-            t_ids = self.tid_triplets_index[id]
-            triplets += list(map(lambda t_id: self.triplets[t_id], list(t_ids)))
-        return triplets
+            t_ids = self.qid_quadruplets_index[id]
+            quadruplets += list(map(lambda t_id: self.quadruplets[t_id], list(t_ids)))
+        return quadruplets
 
-    def update(self, items: List[Triplet]) -> None:
+    def update(self, items: List[Quadruplet]) -> None:
         # TODO
         pass
 
@@ -117,20 +118,20 @@ class InMemoryGraphConnector(AbstractGraphDatabaseConnection):
             if type(id) is not str:
                 raise ValueError
 
-        for i, t_id in enumerate(ids):
+        for i, q_id in enumerate(ids):
             cur_info = delete_info.get(i, None)
 
-            internal_t_ids = self.tid_triplets_index[t_id]
+            internal_q_ids = self.qid_quadruplets_index[q_id]
 
-            for internal_t_id in internal_t_ids:
-                matched_triplet = self.triplets[internal_t_id]
+            for internal_q_id in internal_q_ids:
+                matched_quadruplet = self.quadruplets[internal_q_id]
 
-                internal_snode_ids = list(self.strid_nodes_index[matched_triplet.start_node.id])
-                internal_enode_ids = list(self.strid_nodes_index[matched_triplet.end_node.id])
+                internal_snode_ids = list(self.strid_nodes_index[matched_quadruplet.start_node.id])
+                internal_enode_ids = list(self.strid_nodes_index[matched_quadruplet.end_node.id])
 
                 nodes_id_to_delete = set()
                 for sn_id in internal_snode_ids:
-                    self.edges[sn_id].remove(internal_t_id)
+                    self.edges[sn_id].remove(internal_q_id)
                     self.adjacent_nodes[sn_id].difference_update(internal_enode_ids)
 
                     if (cur_info is None) or cur_info['s_node']:
@@ -140,11 +141,11 @@ class InMemoryGraphConnector(AbstractGraphDatabaseConnection):
                         nodes_id_to_delete.add(sn_id)
 
                 if ((cur_info is None) or cur_info['s_node']) and len(nodes_id_to_delete):
-                    self.strid_nodes_index[matched_triplet.start_node.id].difference_update(nodes_id_to_delete)
+                    self.strid_nodes_index[matched_quadruplet.start_node.id].difference_update(nodes_id_to_delete)
 
                 nodes_id_to_delete = set()
                 for en_id in internal_enode_ids:
-                    self.edges[en_id].remove(internal_t_id)
+                    self.edges[en_id].remove(internal_q_id)
                     self.adjacent_nodes[en_id].difference_update(internal_snode_ids)
 
                     if (cur_info is None) or cur_info['e_node']:
@@ -154,17 +155,17 @@ class InMemoryGraphConnector(AbstractGraphDatabaseConnection):
                         nodes_id_to_delete.add(en_id)
 
                 if ((cur_info is None) or cur_info['e_node']) and len(nodes_id_to_delete):
-                    self.strid_nodes_index[matched_triplet.end_node.id].difference_update(nodes_id_to_delete)
+                    self.strid_nodes_index[matched_quadruplet.end_node.id].difference_update(nodes_id_to_delete)
 
-                self.strid_relation_index[matched_triplet.relation.id].pop()
-                del self.triplets[internal_t_id]
+                self.strid_relation_index[matched_quadruplet.relation.id].pop()
+                del self.quadruplets[internal_q_id]
 
-            del self.tid_triplets_index[t_id]
+            del self.qid_quadruplets_index[q_id]
 
 
-    def read_by_name(self, name: str, object_type: Union[RelationType, NodeType], object: str = 'relation') -> List[Union[Triplet, Node]]:
+    def read_by_name(self, name: str, object_type: Union[RelationType, NodeType], object: str = 'relation') -> List[Union[Quadruplet, Node]]:
         # Note: Реализован наивный способ поиска элементов в графе
-        # (алгоритмическая сложность O(n), где n - количество триплетов/вершин в графе)
+        # (алгоритмическая сложность O(n), где n - количество квадруплетов/вершин в графе)
 
         if type(object_type) not in [RelationType, NodeType]:
             raise ValueError
@@ -176,7 +177,7 @@ class InMemoryGraphConnector(AbstractGraphDatabaseConnection):
             raise ValueError
 
         if object == 'relation':
-            formated_output =  [triplet for triplet in self.triplets.values() if triplet.relation.type == object_type and triplet.relation.name == name]
+            formated_output =  [quadruplet for quadruplet in self.quadruplets.values() if quadruplet.relation.type == object_type and quadruplet.relation.name == name]
         elif object == 'node':
             formated_output =  [node for node in self.nodes.values() if node.type == object_type and node.name == name]
         else:
@@ -201,7 +202,7 @@ class InMemoryGraphConnector(AbstractGraphDatabaseConnection):
     def get_nodes_shared_ids(self, node1_id: str, node2_id: str, id_type: str = 'both') -> List[Dict[str,str]]:
         if (type(node1_id) is not str) or (type(node2_id) is not str):
             raise ValueError(node1_id, node2_id)
-        if type(id_type) is not str or id_type not in ['triplet', 'relation', 'both']:
+        if type(id_type) is not str or id_type not in ['quadruplet', 'relation', 'both']:
             raise ValueError(id_type)
 
         formated_info = []
@@ -210,22 +211,22 @@ class InMemoryGraphConnector(AbstractGraphDatabaseConnection):
         n2_internal_ids = self.strid_nodes_index[node2_id]
         for n1 in n1_internal_ids:
             for n2 in n2_internal_ids:
-                shared_internal_tids = self.edges[n1].intersection(self.edges[n2])
+                shared_internal_qids = self.edges[n1].intersection(self.edges[n2])
 
-                for internal_tid in shared_internal_tids:
-                    if id_type == 'triplet':
-                        formated_info.append({'t_id': self.triplets[internal_tid].id})
+                for internal_qid in shared_internal_qids:
+                    if id_type == 'quadruplet':
+                        formated_info.append({'t_id': self.quadruplets[internal_qid].id})
                     elif id_type == 'relation':
-                        formated_info.append({'r_id': self.triplets[internal_tid].relation.id})
+                        formated_info.append({'r_id': self.quadruplets[internal_qid].relation.id})
                     elif id_type == 'both':
-                        formated_info.append({'t_id': self.triplets[internal_tid].id,
-                            'r_id':self.triplets[internal_tid].relation.id})
+                        formated_info.append({'t_id': self.quadruplets[internal_qid].id,
+                            'r_id':self.quadruplets[internal_qid].relation.id})
                     else:
                         raise ValueError(id_type)
 
         return formated_info
 
-    def get_triplets(self, node1_id: str, node2_id: str) -> List[Triplet]:
+    def get_quadruplets(self, node1_id: str, node2_id: str) -> List[Quadruplet]:
         if (type(node1_id) is not str) or (type(node2_id) is not str):
             raise ValueError
 
@@ -243,38 +244,37 @@ class InMemoryGraphConnector(AbstractGraphDatabaseConnection):
         for n_db_id in end_n_db_ids:
             end_n_edges.update(self.edges[n_db_id])
 
-        shared_triplets_ids = end_n_edges.intersection(start_n_edges)
-        triplets = list(map(lambda id: self.triplets[id], shared_triplets_ids))
-        return triplets
+        shared_quadruplets_ids = end_n_edges.intersection(start_n_edges)
+        quadruplets = list(map(lambda id: self.quadruplets[id], shared_quadruplets_ids))
+        return quadruplets
 
-    def get_triplets_by_name(self, subj_names: List[str], obj_names: List[str], obj_type: str) -> List[Triplet]:
-        triplets = []
-        for triplet in self.triplets.values():
-            if obj_type in str(triplet.end_node.type):
-                if subj_names and triplet.start_node.name in subj_names:
-                    triplets.append(triplet)
-                elif obj_names and triplet.end_node.name in obj_names:
-                    triplets.append(triplet)
-        return triplets
+    def get_quadruplets_by_name(self, subj_names: List[str], obj_names: List[str], obj_type: str) -> List[Quadruplet]:
+        quadruplets = []
+        for quadruplet in self.quadruplets.values():
+            if obj_type in str(quadruplet.end_node.type):
+                if subj_names and quadruplet.start_node.name in subj_names:
+                    quadruplets.append(quadruplet)
+                elif obj_names and quadruplet.end_node.name in obj_names:
+                    quadruplets.append(quadruplet)
+        return quadruplets
 
     def get_node_type(self, id: str) -> NodeType:
         if id in self.nodes:
             return self.nodes[id].type
-        
+
         # Check if it is a string ID that maps to internal IDs
         internal_ids = self.strid_nodes_index.get(id)
         if internal_ids and len(internal_ids) > 0:
-            # All internal nodes for a given string ID should have the same type
             first_internal_id = list(internal_ids)[0]
             if first_internal_id in self.nodes:
                 return self.nodes[first_internal_id].type
-            
+
         raise ValueError(f"Node with id {id} not found")
 
     def count_items(self, id: str = None, id_type: str = None) -> Union[Dict[str,int],int]:
         result = None
         if id_type is None:
-            result = {'triplets': len(self.triplets), 'nodes': len(self.nodes)}
+            result = {'quadruplets': len(self.quadruplets), 'nodes': len(self.nodes)}
 
         elif id_type == 'node':
             result = len(self.strid_nodes_index[id])
@@ -282,15 +282,15 @@ class InMemoryGraphConnector(AbstractGraphDatabaseConnection):
         elif id_type == 'relation':
             result = len(self.strid_relation_index[id])
 
-        elif id_type == 'triplet':
-            result = len(self.tid_triplets_index[id])
+        elif id_type == 'quadruplet':
+            result = len(self.qid_quadruplets_index[id])
 
         else:
             raise ValueError
 
         return result
 
-    def item_exist(self, item_id: str, id_type: str ='triplet') -> bool:
+    def item_exist(self, item_id: str, id_type: str ='quadruplet') -> bool:
         if type(item_id) is not str:
             raise ValueError
 
@@ -299,8 +299,8 @@ class InMemoryGraphConnector(AbstractGraphDatabaseConnection):
             output = self.strid_nodes_index[item_id]
         elif id_type == 'relation':
             output = self.strid_relation_index[item_id]
-        elif id_type == 'triplet':
-            output = self.tid_triplets_index[item_id]
+        elif id_type == 'quadruplet':
+            output = self.qid_quadruplets_index[item_id]
         else:
             raise ValueError
 

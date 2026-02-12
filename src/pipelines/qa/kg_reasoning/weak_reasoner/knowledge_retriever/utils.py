@@ -2,13 +2,13 @@ from typing import List, Dict
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from ......utils.data_structs import QueryInfo, Triplet
+from ......utils.data_structs import QueryInfo, Quadruplet
 from .errors import NOT_VALID_ID_ERROR_MSG, NO_START_NODE_IN_PARENT_ERROR_MSG, EMPTY_PARENT_ERROR_MSG
 
 def get_nodes_path(parent: Dict[str, str], end_node_id: str) -> List[str]:
     """Метод предназначен для получения пути обхода графа, заканчивая заданной конечной end_node_id вершиной.
     Путь должен быть ацикличным: есть стартовая вершин, у которой нет родителя.
-
+    
     :param parent: Словарь с идентификаторами родительских вершин. Ключи - идентикиаторы вершин, которые были посещены; значения - идентификаторы вершины (родитель), из которой был выполнен переход в данную (ключ) вершину.
     :type parent: Dict[str, str]
     :param end_node_id: Идентификатор последней посещённой вершины.
@@ -33,40 +33,40 @@ def get_nodes_path(parent: Dict[str, str], end_node_id: str) -> List[str]:
             cur_n = next_n
     return path
 
-class AbstractTriplesFilter(ABC):
-    """Интерфейс алгоритмов фильтрации/ранжирования триплетов."""
+class AbstractQuadrupletsFilter(ABC):
+    """Интерфейс алгоритмов фильтрации/ранжирования квадруплетов."""
     @abstractmethod
-    def apply_filter(self, query_info: QueryInfo, triplets: List[Triplet]) -> List[Triplet]:
-        """Метод предназначен для применения операциии ранжирования/фильтрации к набору триплетов на основе меры их релевантности к user-вопросу.
+    def apply_filter(self, query_info: QueryInfo, quadruplets: List[Quadruplet]) -> List[Quadruplet]:
+        """Метод предназначен для применения операциии ранжирования/фильтрации к набору квадруплетов на основе меры их релевантности к user-вопросу.
 
         :param query_info: Структура данных с user-вопросом.
         :type query_info: QueryInfo
-        :param triplets: Набор триплетов для ранжирования/отбора.
-        :type triplets: List[Triplet]
-        :return: Набор триплетов, релевантных данному user-вопросу.
-        :rtype: List[Triplet]
+        :param quadruplets: Набор квадруплетов для ранжирования/отбора.
+        :type quadruplets: List[Quadruplet]
+        :return: Набор квадруплетов, релевантных данному user-вопросу.
+        :rtype: List[Quadruplet]
         """
         pass
 
-class AbstractTripletsRetriever(ABC):
-    """Интерфейс алгоритмов извлечения триплетов из графа знаний."""
+class AbstractQuadrupletsRetriever(ABC):
+    """Интерфейс алгоритмов извлечения квадруплетов из графа знаний."""
     @abstractmethod
-    def get_relevant_triplets(self, query_info: QueryInfo) -> List[Triplet]:
-        """Метод предназначен для извлечения триплетов из графа знаний на основе информации из user-вопроса. Возвращаемый список триплетов не содержит дубликатов (по строковому представлению).
+    def get_relevant_quadruplets(self, query_info: QueryInfo) -> List[Quadruplet]:
+        """Метод предназначен для извлечения квадруплетов из графа знаний на основе информации из user-вопроса. Возвращаемый список квадруплетов не содержит дубликатов (по строковому представлению).
 
         :param query_info: Структура данных с информацией о user-вопросе.
         :type query_info: QueryInfo
-        :return: Набор триплетов, извлечённый из графа знаний.
-        :rtype: List[Triplet]
+        :return: Набор квадруплетов, извлечённый из графа знаний.
+        :rtype: List[Quadruplet]
         """
         pass
 
 @dataclass
 class BaseGraphSearchConfig:
-    """Базовая конфигурация алгоритмов по извлечению триплетов из графа знаний."""
+    """Базовая конфигурация алгоритмов по извлечению квадруплетов из графа знаний."""
     pass
 
 @dataclass
-class BaseTripletsFilterConfig:
-    """Базовая конфигурация алгоритмов по ранжированию/фильтрации триплетов."""
+class BaseQuadrupletsFilterConfig:
+    """Базовая конфигурация алгоритмов по ранжированию/фильтрации квадруплетов."""
     pass

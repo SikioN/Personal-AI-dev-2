@@ -69,21 +69,19 @@ class Relation:
     id: str = None
 
 @dataclass
-class Triplet:
-    """Структура данных триплета."""
-    # Subject-часть триплета.
+class Quadruplet:
+    """Структура данных квадруплета (S, R, O, T)."""
+    # Subject-часть квадруплета.
     start_node: Node
-    # Отношение сущностей в триплете. Отношение идёт от subject к object.
+    # Отношение сущностей в квадруплете. Отношение идёт от subject к object.
     relation: Relation
-    # Object-часть триплета.
-    # Object-часть триплета.
+    # Object-часть квадруплета.
     end_node: Node
-    #: Временная/Time-часть триплета.
-    time: Node = None
-    #: Строковое представление триплета.
+    #: Временная/Time-часть квадруплета.
+    time: Node
+    #: Строковое представление квадруплета.
     stringified: str = None
-    #: Идентификатор триплета, полученный на основе идентификаторов его частей.
-    #: Данное значение отличается от значения в поле id объекта класса Relation.
+    #: Идентификатор квадруплета, полученный на основе идентификаторов его частей.
     id: str = None
 
 class BaseCreator:
@@ -98,7 +96,7 @@ class BaseCreator:
         :return: Обогащённое строковое представление объекта.
         :rtype: str
         """
-        str_prop = '; '.join([f"{k}: {v}" for k, v in obj.prop.items() if k not in ['name', 'type', 'raw_time', 'time', 'str_id', 't_id']])
+        str_prop = '; '.join([f"{k}: {v}" for k, v in obj.prop.items() if k not in ['name', 'type', 'raw_time', 'time', 'str_id', 't_id', 'time_node_id']])
         if str_prop:
             obj_str += f" ({str_prop})"
         return obj_str
@@ -198,127 +196,81 @@ def create_id_for_node_pair(node1_id: str, node2_id: str) -> str:
 def create_id(seed: str) -> str:
     return hashlib.md5(seed.encode()).hexdigest()
 
-class TripletCreator(BaseCreator):
+class QuadrupletCreator(BaseCreator):
     @staticmethod
     def create(start_node: Node, relation: Relation, end_node: Node, time: Node = None,
-            add_stringified_triplet: bool = True, t_id: str = None) -> Triplet:
-        """Метод предназначен для создания структуры данных триплета с указанным содержанием.
-        Триплет является ориентированным: у связи между вершинами (парой subject/object) есть направление.
+            add_stringified_quadruplet: bool = True, t_id: str = None) -> Quadruplet:
+        """Метод предназначен для создания структуры данных квадруплета (S, R, O, T)."""
 
-        :param start_node: Структура данных стартовой (subject) вершины триплета.
-        :type start_node: Node
-        :param relation: Структура данных связи триплета.
-        :type relation: Relation
-        :param end_node: Структура данных конечной (object) вершины триплета.
-        :type end_node: Node
-        :param time: Структура данных времени (time) вершины триплета. Значение по умолчанию None.
-        :type time: Node, optional
-        :param add_stringified_triplet: Если True, то в структуру данных триплета будет сохранено его строковое представление, иначе соответствующее поле будет хранить None. Значение по умолчанию True.
-        :type add_stringified_triplet: bool, optional
-        :param t_id: Идентификатор, который будет назначен триплету вручную. Если идентификатор не указан (None), то он будет назначен триплету автоматически. Значение по умолчанию None.
-        :type t_id: str, optional
-        :return: Созданная структура данных триплета.
-        :rtype: Triplet
-        """
+        if time is None:
+            # Default to "Always" if not provided
+            time = NodeCreator.create(NodeType.time, "Always", add_stringified_node=True)
 
-        triplet = Triplet(start_node, relation, end_node, time=time)
-        _, str_triplet = TripletCreator.stringify(triplet)
-        if add_stringified_triplet:
-            triplet.stringified = str_triplet
+        quadruplet = Quadruplet(start_node, relation, end_node, time=time)
+        _, str_quadruplet = QuadrupletCreator.stringify(quadruplet)
+        if add_stringified_quadruplet:
+            quadruplet.stringified = str_quadruplet
 
-        triplet.relation.id = create_id(str_triplet)
+        quadruplet.relation.id = create_id(str_quadruplet)
 
         if t_id is None:
-            time_id = triplet.time.id if triplet.time is not None else ""
-            triplet.id = create_id(''.join(
-                [triplet.start_node.id,triplet.relation.id,triplet.end_node.id, time_id]))
+            # ID depends on S, R, O, T
+            quadruplet.id = create_id(''.join(
+                [quadruplet.start_node.id, quadruplet.relation.id, quadruplet.end_node.id, quadruplet.time.id]))
         else:
-            triplet.id = t_id
+            quadruplet.id = t_id
 
-        return triplet
+        return quadruplet
 
     @staticmethod
-    def stringify(triplet: Triplet) -> Tuple[str,str]:
-        """Метод предназначен для приведения Triplet-структуры данных в её строковое представление. Строковое представление зависит от типа триплета (Triplet.relation.type):
-        (1) simple - используется информация из обеих вершин и связи; (2) hyper/episodic - используется информация только из конечной (object) вершины.
+    def stringify(quadruplet: Quadruplet) -> Tuple[str,str]:
+        """Метод предназначен для приведения структуры данных в строковое представление."""
+        rel_type = quadruplet.relation.type
+        str_quadruplet = ""
 
-        :param triplet: Структура данных триплета.
-        :type triplet: Triplet
-        :raises KeyError: В триплете у связи указан тип, который не поддерживается.
-        :return: Кортеж из двух объектов: (1) идентификатор связи между данной парой вершин из триплета; (2) строковое представление триплета.
-        :rtype: Tuple[str,str]
-        """
-        rel_type = triplet.relation.type
-        str_triplet = ""
-
-        # Добавляем временной маркер в самое начало, если он есть
-        if triplet.time is not None:
-            str_triplet += f"{triplet.time.name}: "
-        elif "time" in triplet.relation.prop.keys():
-            str_triplet += triplet.relation.prop["time"] + ": "
-        elif "time" in triplet.end_node.prop.keys():
-             str_triplet += triplet.end_node.prop["time"] + ": "
+        # Добавляем временной маркер в самое начало, если он не "Always"
+        if quadruplet.time is not None and quadruplet.time.name != "Always":
+             str_quadruplet += f"{quadruplet.time.name}: "
 
         if (rel_type == RelationType.episodic) or (rel_type == RelationType.hyper) or (rel_type == RelationType.time):
-            str_triplet += TripletCreator.add_str_props(triplet.end_node, str(triplet.end_node.name))
+            str_quadruplet += QuadrupletCreator.add_str_props(quadruplet.end_node, str(quadruplet.end_node.name))
 
         elif rel_type == RelationType.simple:
-            str_triplet += " ".join([
-                TripletCreator.add_str_props(triplet.start_node, str(triplet.start_node.name)),
-                TripletCreator.add_str_props(triplet.relation, str(triplet.relation.name)),
-                TripletCreator.add_str_props(triplet.end_node, str(triplet.end_node.name))])
+            parts = [
+                QuadrupletCreator.add_str_props(quadruplet.start_node, str(quadruplet.start_node.name)),
+                QuadrupletCreator.add_str_props(quadruplet.relation, str(quadruplet.relation.name)),
+                QuadrupletCreator.add_str_props(quadruplet.end_node, str(quadruplet.end_node.name))
+            ]
+            str_quadruplet += " ".join(parts)
 
         else:
             raise KeyError
 
-        return triplet.relation.id, str_triplet
-
-        return triplet.relation.id, str_triplet
+        return quadruplet.relation.id, str_quadruplet
 
     @staticmethod
-    def from_json(json_triplet: Dict) -> Triplet:
-        """Метод предназначен для перевода триплета из json-формата (полуструктурированного) в dataclass-формат (структурированный) хранения.
-        Триплет является направленным: связь идёт от субъекта к объекту.
-
-        Триплет в json-формате должен содержать следующие ключи: "subject", "relation" и "object". По каждому из данных ключей должен храниться словарь
-        со следующими ключами: "name", "type" и "prop". По ключу "name" должна храниться строка текста на естественном языке, представляющая основную
-        смысловую информацию данной части триплета. По ключу "prop" в виде словаря могут храниться дополнительные свойства данной части триплета.
-        Если у компоненты триплета нет свойств, то соответствующее поле "prop" можно не указывать/заполнять. По ключу "type" могут храниться только следующие значения:
-        * в случае "subject"/"object"-компонент это "object", "hyper" и "episodic";
-        * в случае "relation"-компоненты это "simple", "hyper" и "episodic".
-
-        В случае если по ключу "type" у "relation"-компоненты триплета указывается значение "hyper" или "episodic", то значение по соответствующему ключу "name"
-        можно не указывать: указанное вручную значение в поле "name" использоваться не будет.
-
-        Примеры валидных json-триплетов:
-        1. {'subject': {'name': 'qwe', 'type': 'object', 'prop': {'k1': 'v1'}},
-        'relation': {'name': 'rty', 'type': 'simple'}, 'object': {'name': 'uio', 'type': 'object'}};
-        2. {'subject': {'name': 'asd', 'type': 'object', 'prop': {'k2': 'v2'}},
-        'relation': {'type': 'hyper', 'prop': {'k3': 'v3'}}, 'object': {'name': 'fgh', 'type': 'hyper'}};
-        3. {'subject': {'name': 'jkl', 'type': 'hyper', 'prop': {'k4': 'v4'}},
-        'relation': {'type': 'episodic', 'prop': {'k5': 'v5'}}, 'object': {'name': 'zxc', 'type': 'episodic', 'prop': {'k5': 'v5'}}}.
-
-        :param json_triplet: Триплет в json-формате.
-        :type json_triplet: Dict
-        :return: Триплет в dataclass-формате.
-        :rtype: Triplet
-        """
+    def from_json(json_quadruplet: Dict) -> Quadruplet:
+        """Метод предназначен для перевода квадруплета из json-формата."""
 
         subject = NodeCreator.create(
-            name=json_triplet['subject']['name'],
-            n_type=json_triplet['subject']['type'],
-            prop=json_triplet['subject'].get('prop', None))
+            name=json_quadruplet['subject']['name'],
+            n_type=json_quadruplet['subject']['type'],
+            prop=json_quadruplet['subject'].get('prop', None))
         relation = RelationCreator.create(
-            name=json_triplet['relation'].get('name', None),
-            r_type=json_triplet['relation']['type'],
-            prop=json_triplet['relation'].get('prop', None))
+            name=json_quadruplet['relation'].get('name', None),
+            r_type=json_quadruplet['relation']['type'],
+            prop=json_quadruplet['relation'].get('prop', None))
         object = NodeCreator.create(
-            name=json_triplet['object']['name'],
-            n_type=json_triplet['object']['type'],
-            prop=json_triplet['object'].get('prop', None))
+            name=json_quadruplet['object']['name'],
+            n_type=json_quadruplet['object']['type'],
+            prop=json_quadruplet['object'].get('prop', None))
+        
+        # Parse time if available
+        time_data = json_quadruplet.get('time', {})
+        time_name = time_data.get('name', 'Always')
+        time = NodeCreator.create(NodeType.time, time_name, prop=time_data.get('prop', None), add_stringified_node=True)
 
-        converted_triplet = TripletCreator.create(start_node=subject, relation=relation, end_node=object)
-        return converted_triplet
+        return QuadrupletCreator.create(start_node=subject, relation=relation, end_node=object, time=time)
 
 #from ..embedding_functions import VectorDBInstance
 

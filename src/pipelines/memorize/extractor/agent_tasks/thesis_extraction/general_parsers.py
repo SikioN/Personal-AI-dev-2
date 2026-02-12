@@ -1,18 +1,26 @@
 from typing import List, Tuple, Dict
 
-from ......utils import NodeCreator, TripletCreator, NodeType
-from ......utils.data_structs import RelationType, Triplet, RelationCreator
+from ......utils import NodeCreator, QuadrupletCreator, NodeType
+from ......utils.data_structs import RelationType, Quadruplet, RelationCreator
 
-def ethesises_custom_formate(text: str, **kwargs) -> Dict[str, str]:
+def equadruplets_thesis_custom_formate(text: str, **kwargs) -> Dict[str, str]:
     if len(text) < 1:
         raise ValueError
     return {'text': text}
 
-def ethesises_custom_postprocess(parsed_response: List[Tuple[str, List[str]]], node_prop: Dict[str, object] = dict(),
-                                 rel_prop: Dict[str, object] = dict(), **kwargs) -> List[Triplet]:
-    formated_triplets = []
-    for triplet in parsed_response:
-        thesis, entities = triplet
+def equadruplets_thesis_custom_postprocess(parsed_response: List[Tuple[str, List[str]]], node_prop: Dict[str, object] = dict(),
+                                 rel_prop: Dict[str, object] = dict(), **kwargs) -> List[Quadruplet]:
+    formated_quadruplets = []
+    
+    # Handle time if passed in rel_prop or node_prop
+    time_str = rel_prop.get('time', node_prop.get('time', "No time"))
+    if time_str == "No time":
+         time_node = None
+    else:
+         time_node = NodeCreator.create(NodeType.time, time_str, add_stringified_node=True)
+
+    for quadruplet in parsed_response:
+        thesis, entities = quadruplet
 
         if len(thesis) < 1:
             raise ValueError
@@ -23,8 +31,9 @@ def ethesises_custom_postprocess(parsed_response: List[Tuple[str, List[str]]], n
             if len(entity) < 1:
                 raise ValueError
 
-            formated_triplets.append(TripletCreator.create(
+            formated_quadruplets.append(QuadrupletCreator.create(
                 start_node=NodeCreator.create(name=str(entity), n_type=NodeType.object),
-                relation=thesis_rel, end_node=thesis_node))
+                relation=thesis_rel, end_node=thesis_node,
+                time=time_node))
 
-    return formated_triplets
+    return formated_quadruplets

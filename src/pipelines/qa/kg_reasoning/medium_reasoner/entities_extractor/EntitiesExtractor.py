@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Tuple, Union, List
+from typing import Tuple, Union, List, Dict
 from copy import deepcopy
 
 from .config import ENEXTR_MAIN_LOG_PATH, DEFAULT_ENT_EXTR_TASK_CONFIG, EntitiesExtractorConfig
@@ -37,18 +37,23 @@ class EntitiesExtractor(CacheUtils):
         return [query, self.config.to_str()]
 
     @CacheUtils.cache_method_output
-    def perform(self, query: str) -> Tuple[List[str], ReturnInfo]:
+    def perform(self, query: str) -> Tuple[Dict[str, Union[List[str], Union[str, None]]], ReturnInfo]:
         self.log("START ENTITIES EXTRACTION...", verbose=self.config.verbose)
         info = ReturnInfo()
         self.log(f"QUERY ID: {create_id(query)}", verbose=self.config.verbose)
         self.log(f"QUERY: {query}", verbose=self.config.verbose)
         
         self.log("Выполнение извлечения сущностей из запроса с помощью LLM-агента...", verbose=self.config.verbose)
-        entities, info.status = self.entities_extractor_solver.solve(lang=self.config.lang, query=query)
-        self.log(f"RESULT: {entities}", verbose=self.verbose)
+        # Result is now a dict: {'entities': [], 'time': ...}
+        extraction_result, info.status = self.entities_extractor_solver.solve(lang=self.config.lang, query=query)
+        self.log(f"RESULT: {extraction_result}", verbose=self.verbose)
         self.log(f"STATUS: {info.status}", verbose=self.verbose)
 
-        if entities is None or len(entities) < 1:
+        # Handle empty result
+        if extraction_result is None:
+            extraction_result = {"entities": [], "time": None}
+            info.status = ReturnStatus.empty_answer
+        elif len(extraction_result.get("entities", [])) < 1:
             info.status = ReturnStatus.empty_answer
 
-        return entities, info
+        return extraction_result, info
