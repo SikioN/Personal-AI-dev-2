@@ -1,41 +1,76 @@
-#*.json
-*.pyc
-*.tar
-models/
-data/
-debug/
-wikidata_big/
-
-experiments/legacy
-experiments/qa_kg/legacy
-
-experiments/qa_kg/results/**/tmp_answer_packs/
-experiments/qa_kg/results/**/answer_packs/
-experiments/qa_kg/results/**/judges_packs/
-experiments/qa_kg/results/**/tmp_judges_packs/
-experiments/qa_kg/results/**/metric_packs/
-experiments/qa_kg/results/**/log/
-experiments/qa_kg/results/**/aeval_cron.txt
-experiments/qa_kg/**/qacron_log.txt
-experiments/qa_kg/results/**/agen_cron.txt
-experiments/qa_kg/results/**/llm_aeval_cron.txt
-
-experiments/qa_kg/results/diaasq_legacy
-experiments/legacy
-experiments/qa_kg/legacy
-
-experiments/
-chroma_test_db/
-ollama.log
-*.log
-
-create_local_db/
-archives/
+# --- System & Environment ---
+.DS_Store
+.env
 __pycache__/
+*.pyc
 pai_venv/
+.dvc/
+.dvcignore
+
+# --- Data & Large Files ---
+data/
+wikidata_big/
+processed_data/
+chroma_test_db/
+models/
+*.ckpt
+*.bin
+*.pt
+*.pkl
+*.tar
+*.zip
+output.png
+*.pdf
+
+# --- Logs ---
+*.log
+logs/
+custom_logs/
+ingestion_log/
+ingestion_full_log/
+ingestion_neo4j_log/
+qa_subset_log/
+wandb/
+ingestion_process_details.txt
+
+# --- External Repos / Copies ---
+# Only exclude the full nested repo, but keep source code if present
+CronKGQA/
+kaggle_job/CronKGQA/
+
+# --- Temporary / Scratch ---
+tmp/
+debug/
+archive/
+archives/
+test_graph_vs_qa_Ilnaz.ipynb
+
+# --- Specific Experiments Artifacts ---
+experiments/**/results/
+experiments/**/log/
+experiments/**/answer_packs/
+experiments/**/judges_packs/
+experiments/**/metric_packs/
+experiments/legacy/
+
+# --- Documentation Builds ---
 docs/_build
 docs/build
 docs/log
-tmp/
-tests/volumes
-docs/build
+
+# --- Specific Exclusions per DataSphere Plan ---
+*.html
+*.txt
+*.csv
+!requirements.txt
+!README.md
+!README_MAC.md
+!README_NEO4J.md
+
+# --- Ignore ALL notebooks by default ---
+*.ipynb
+
+# --- Keep ONLY specific notebooks ---
+!notebooks/metrics/benchmark_tcomplex.ipynb
+!notebooks/qa_experiments_v2.ipynb
+

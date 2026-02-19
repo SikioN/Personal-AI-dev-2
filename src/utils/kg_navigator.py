@@ -8,13 +8,13 @@ class KGNavigator:
     def __init__(self, kg_model: KnowledgeGraphModel):
         self.kg_model = kg_model
 
-    def get_neighborhood(self, node_ids: List[str], depth: int = 1) -> List[Quadruplet]:
+    def get_neighborhood(self, node_ids: List[str], depth: int = 1, limit: int = 0) -> List[Quadruplet]:
         """Fetch all quadruplets connected to the given nodes within specified depth."""
         all_quadruplets = []
         visited_nodes = set(node_ids)
         current_layer = set(node_ids)
         
-        print(f"DEBUG: [KGNavigator] Getting neighborhood for {node_ids} at depth {depth}")
+        # print(f"DEBUG: [KGNavigator] Getting neighborhood for {node_ids} at depth {depth}")
         
         for d in range(depth):
             next_layer = set()
@@ -22,10 +22,14 @@ class KGNavigator:
                 # Get adjacent node IDs
                 try:
                     adj_ids = self.kg_model.graph_struct.db_conn.get_adjecent_nids(node_id)
-                    print(f"DEBUG: [KGNavigator] Node {node_id} has {len(adj_ids)} adjacent nodes")
+                    # print(f"DEBUG: [KGNavigator] Node {node_id} has {len(adj_ids)} adjacent nodes")
                 except Exception as e:
                     print(f"DEBUG: [KGNavigator] Error getting adjacent nodes for {node_id}: {e}")
                     adj_ids = []
+
+                # Apply limit per node if specified
+                if limit > 0 and len(adj_ids) > limit:
+                     adj_ids = list(adj_ids)[:limit]
 
                 for adj_id in adj_ids:
                     # Get quadruplets between node_id and adj_id
@@ -40,7 +44,7 @@ class KGNavigator:
                         visited_nodes.add(adj_id)
             current_layer = next_layer
         
-        print(f"DEBUG: [KGNavigator] Total quadruplets found: {len(all_quadruplets)}")
+        # print(f"DEBUG: [KGNavigator] Total quadruplets found: {len(all_quadruplets)}")
         return all_quadruplets
 
     def quadruplets_to_nx(self, quadruplets: List[Quadruplet]) -> nx.MultiDiGraph:
