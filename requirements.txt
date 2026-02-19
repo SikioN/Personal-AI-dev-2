@@ -1,0 +1,29 @@
+# Core Machine Learning & Data Science
+torch>=2.0.0
+numpy
+pandas
+scikit-learn
+tqdm
+networkx
+
+# NLP & Language Models
+sentence-transformers
+transformers
+tokenizers
+
+# Databases & Retrieval
+neo4j
+chromadb
+
+# API & Web
+fastapi
+uvicorn
+pydantic
+requests
+
+# Notebook environment
+ipykernel
+jupyter
+
+# Miscellaneous Utils
+python-dotenv

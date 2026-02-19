@@ -59,18 +59,22 @@ docs/build
 docs/log
 
 # --- Specific Exclusions per DataSphere Plan ---
+# --- Specific Exclusions per DataSphere Plan ---
 *.html
 *.txt
 *.csv
-!requirements.txt
-!README.md
-!README_MAC.md
-!README_NEO4J.md
+*.md
+*.pdf
+app.py
+speech_script.txt
+
+!/requirements.txt
+!/README.md
 
 # --- Ignore ALL notebooks by default ---
 *.ipynb
 
 # --- Keep ONLY specific notebooks ---
-!notebooks/metrics/benchmark_tcomplex.ipynb
-!notebooks/qa_experiments_v2.ipynb
+!/notebooks/metrics/benchmark_tcomplex.ipynb
+!/notebooks/qa_experiments_v2.ipynb
 
