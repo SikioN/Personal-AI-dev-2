@@ -15,22 +15,35 @@ def main():
     os.makedirs(args.out_dir, exist_ok=True)
 
     # Copy everything first, then we'll overwrite what we change
-    for f in os.listdir(args.baseline_dir):
-        src_f = os.path.join(args.baseline_dir, f)
-        dst_f = os.path.join(args.out_dir, f)
-        if os.path.isfile(src_f):
-            shutil.copy(src_f, dst_f)
+    if os.path.exists(args.baseline_dir):
+        for f in os.listdir(args.baseline_dir):
+            src_f = os.path.join(args.baseline_dir, f)
+            dst_f = os.path.join(args.out_dir, f)
+            if os.path.isfile(src_f):
+                shutil.copy(src_f, dst_f)
 
-    # Load dictionaries
-    with open(os.path.join(args.out_dir, "ent_id"), "rb") as f:
+    # Load dictionaries from the ORIGINAL baseline directory to memory
+    ent_id_path = os.path.join(args.baseline_dir, "ent_id")
+    rel_id_path = os.path.join(args.baseline_dir, "rel_id")
+    ts_id_path = os.path.join(args.baseline_dir, "ts_id")
+    train_pickle_path = os.path.join(args.baseline_dir, "train.pickle")
+    
+    # Fallback to out_dir if they were successfully copied but baseline_dir has quirks
+    if not os.path.exists(ent_id_path):
+        ent_id_path = os.path.join(args.out_dir, "ent_id")
+        rel_id_path = os.path.join(args.out_dir, "rel_id")
+        ts_id_path = os.path.join(args.out_dir, "ts_id")
+        train_pickle_path = os.path.join(args.out_dir, "train.pickle")
+
+    with open(ent_id_path, "rb") as f:
         ent_id = pickle.load(f)
-    with open(os.path.join(args.out_dir, "rel_id"), "rb") as f:
+    with open(rel_id_path, "rb") as f:
         rel_id = pickle.load(f)
-    with open(os.path.join(args.out_dir, "ts_id"), "rb") as f:
+    with open(ts_id_path, "rb") as f:
         ts_id = pickle.load(f)
     
     # Read original train.pickle
-    with open(os.path.join(args.out_dir, "train.pickle"), "rb") as f:
+    with open(train_pickle_path, "rb") as f:
         train_data = pickle.load(f)
 
     print(f"Original train size: {train_data.shape}")
