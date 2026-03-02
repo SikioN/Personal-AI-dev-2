@@ -22,18 +22,15 @@ def main():
             if os.path.isfile(src_f):
                 shutil.copy(src_f, dst_f)
 
+    # Debugging on Kaggle: print what is actually in the baseline_dir
+    print(f"Contents of baseline_dir ({args.baseline_dir}): ", os.listdir(args.baseline_dir) if os.path.exists(args.baseline_dir) else "DIR NOT FOUND")
+
     # Load dictionaries from the ORIGINAL baseline directory to memory
     ent_id_path = os.path.join(args.baseline_dir, "ent_id")
     rel_id_path = os.path.join(args.baseline_dir, "rel_id")
     ts_id_path = os.path.join(args.baseline_dir, "ts_id")
     train_pickle_path = os.path.join(args.baseline_dir, "train.pickle")
     
-    # Fallback to out_dir if they were successfully copied but baseline_dir has quirks
-    if not os.path.exists(ent_id_path):
-        ent_id_path = os.path.join(args.out_dir, "ent_id")
-        rel_id_path = os.path.join(args.out_dir, "rel_id")
-        ts_id_path = os.path.join(args.out_dir, "ts_id")
-        train_pickle_path = os.path.join(args.out_dir, "train.pickle")
 
     with open(ent_id_path, "rb") as f:
         ent_id = pickle.load(f)
