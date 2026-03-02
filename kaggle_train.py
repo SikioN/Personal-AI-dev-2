@@ -38,6 +38,66 @@ def main():
     
     start_time = time.time()
 
+    # Monkeypatch TemporalDataset to read from the current working directory
+    # instead of tkbc's __file__ location from pip install.
+    original_init = TemporalDataset.__init__
+    
+    def custom_init(self, name: str):
+        # Instead of __file__, use our current working directory where data/ is created
+        project_root = os.getcwd()
+        DATA_PATH = os.path.join(project_root, f'data/{name}/kg/tkbc_processed_data/')
+        self.root = os.path.join(DATA_PATH, name)
+        
+        self.data = {}
+        import pickle
+        import torch
+        for f in ['train', 'test', 'valid']:
+            in_file = open(os.path.join(self.root, f + '.pickle'), 'rb')
+            self.data[f] = pickle.load(in_file)
+
+        maxis = np.max(self.data['train'], axis=0)
+        self.n_entities = int(max(maxis[0], maxis[2]) + 1)
+        self.n_predicates = int(maxis[1] + 1)
+        self.n_predicates *= 2
+
+        if maxis.shape[0] > 4:
+            self.n_timestamps = max(int(maxis[3] + 1), int(maxis[4] + 1))
+        else:
+            self.n_timestamps = int(maxis[3] + 1)
+            
+        try:
+            inp_f = open(os.path.join(self.root, 'ts_diffs.pickle'), 'rb')
+            self.time_diffs = torch.from_numpy(pickle.load(inp_f)).cuda().float()
+            inp_f.close()
+        except OSError:
+            print("Assume all timestamps are regularly spaced")
+            self.time_diffs = None
+
+        try:
+            e = open(os.path.join(self.root, 'event_list_all.pickle'), 'rb')
+            self.events = pickle.load(e)
+            e.close()
+
+            f = open(os.path.join(self.root, 'ts_id'), 'rb')
+            dictionary = pickle.load(f)
+            f.close()
+            self.timestamps = sorted(dictionary.keys())
+            self.n_timestamps = len(self.timestamps)
+            print('Changed number of timestamps (from default script)')
+            print('Number of entity, rel, time')
+            print(self.n_entities, self.n_predicates, self.n_timestamps)
+        except OSError:
+            print("Not using time intervals and events eval")
+            self.events = None
+
+        if self.events is None:
+            inp_f = open(os.path.join(self.root, 'to_skip.pickle'), 'rb')
+            self.to_skip = pickle.load(inp_f)
+            inp_f.close()
+            
+    # Apply monkeypatch
+    TemporalDataset.__init__ = custom_init
+
     dataset = TemporalDataset(args.dataset)
     sizes = dataset.get_shape()
     train_split_len = len(dataset.get_train())
