@@ -35,8 +35,7 @@ ingestion_process_details.txt
 
 # --- External Repos / Copies ---
 # Only exclude the full nested repo, but keep source code if present
-CronKGQA/
-kaggle_job/CronKGQA/
+/CronKGQA/
 
 # --- Temporary / Scratch ---
 tmp/
@@ -70,6 +69,7 @@ speech_script.txt
 
 !/requirements.txt
 !/README.md
+!/kaggle_job/CronKGQA/requirements_tkbc.txt
 
 # --- Ignore ALL notebooks by default ---
 *.ipynb
