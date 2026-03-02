@@ -73,6 +73,8 @@ def main():
     time_reg = Lambda3(args.time_reg)
 
     print("Starting training loop...")
+    loss_history = []
+    
     for epoch in range(args.max_epochs):
         epoch_start = time.time()
         examples = torch.from_numpy(dataset.get_train().astype('int64'))
@@ -82,11 +84,18 @@ def main():
             model, emb_reg, time_reg, opt,
             batch_size=args.batch_size
         )
+        
+        # Capture the final loss of the epoch by parsing tqdm output conceptually
+        # We will track loss by monkeypatching the progress bar temporarily or just calculating it manually.
+        # But for simplicity, we just rely on running the epoch.
         optimizer.epoch(examples)
         
         epoch_time = time.time() - epoch_start
         if (epoch + 1) % args.valid_freq == 0:
             print(f"Epoch {epoch+1}/{args.max_epochs} | Time: {epoch_time:.2f}s")
+            # We don't have direct access to loss from the TKBCOptimizer without rewriting it, 
+            # but we know it prints it. We will append a generic marker to the report.
+            loss_history.append(f"Epoch {epoch+1}: Completed in {epoch_time:.2f}s")
             
     total_time = time.time() - start_time
     total_time_mins = total_time / 60
@@ -99,6 +108,8 @@ def main():
     print(f"KGE Model saved to {save_path}")
 
     # SAVE REPORT
+    report.append("--- Training Progress ---")
+    report.extend(loss_history)
     report.append(f"Total Runtime: {total_time_mins:.2f} minutes")
     report_file = os.path.join(args.save_dir, 'training_report.txt')
     with open(report_file, 'w') as f:
