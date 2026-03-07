@@ -9,8 +9,6 @@ from .answers_aggregation import AnswersAggregator, AnswersAggregatorConfig
 from ...kg_model import KnowledgeGraphModel
 from ...utils import Logger, ReturnStatus, ReturnInfo
 from ...utils.data_structs import create_id
-from ...db_drivers.kv_driver import KeyValueDriverConfig
-
 @dataclass
 class QAPipelineConfig:
     """
@@ -46,18 +44,18 @@ class QAPipeline:
     """
 
     def __init__(self, kg_model: KnowledgeGraphModel, config: QAPipelineConfig = QAPipelineConfig(),
-                 cache_kvdriver_config: Union[KeyValueDriverConfig, None] = None) -> None:
+                 cache_kvdriver_config=None) -> None:
         self.config = config
         self.kg_model = kg_model
         self.log = config.log
 
         if self.config.preprocessor_config is not None:
-            self.query_preprocessor = QueryPreprocessor(self.config.preprocessor_config, cache_kvdriver_config)
+            self.query_preprocessor = QueryPreprocessor(self.config.preprocessor_config)
         else:
             self.query_preprocessor = None
 
-        self.kg_reasoner = KnowledgeGraphReasoner(kg_model, self.config.reasoner_config, cache_kvdriver_config)
-        self.answers_aggregator = AnswersAggregator(self.config.aggregator_config, cache_kvdriver_config)
+        self.kg_reasoner = KnowledgeGraphReasoner(kg_model, self.config.reasoner_config)
+        self.answers_aggregator = AnswersAggregator(self.config.aggregator_config)
 
         self.log = self.config.log
         self.verbose = self.config.verbose

@@ -4,7 +4,10 @@ import json
 import logging
 from typing import Dict, Any, Optional
 
-class OllamaClient:
+from src.llm.base_client import BaseLLMClient
+
+
+class OllamaClient(BaseLLMClient):
     def __init__(self, base_url: str = "http://localhost:11434", model: str = "llama3"):
         self.base_url = base_url
         self.model = model
@@ -37,21 +40,37 @@ class OllamaClient:
         Returns a dictionary with keys: 'entity', 'relation', 'time'.
         """
         system_prompt = """
-        You are an expert Named Entity Recognition (NER) system for a Temporal Knowledge Graph.
-        Your task is to extract search parameters from a user's question.
-        
-        EXTRACT:
-        1. entities: A list of ALL important subjects, objects, or concepts (e.g. ["Apple", "Steve Jobs"], ["Award", "Acting"]).
-        2. relation: The relationship queried (e.g. "CEO", "received award").
-        3. time: Specific year (e.g. "2011") or null.
+You are an expert NER system for a Temporal Knowledge Graph.
 
-        Output ONLY valid JSON:
-        {
-            "entities": ["Entity1", "Entity2"],
-            "relation": "Relation Name",
-            "time": "YYYY" or null
-        }
-        """
+FIELDS TO EXTRACT:
+1. entities: List of ALL subjects, objects, concepts mentioned.
+2. relation: The relationship queried (e.g. "spouse", "president", "born").
+3. time: Specific year (e.g. "2011") or null.
+4. anchor_entity: (JOIN queries) Entity whose event determines the time.
+5. anchor_event: (JOIN queries) The event/relation to find the time.
+6. type: One of [simple_entity, simple_time, before_after, first_last, time_join].
+7. answer_type: "year" if the expected answer is a year/date, "entity" otherwise.
+
+CLASSIFICATION RULES:
+- simple_time: The ANSWER itself is a year or date (e.g. "When did X happen?")
+  -> answer_type MUST be "year"
+- simple_entity: The ANSWER is a person/place/organization/concept.
+  -> Even if the question contains a year as a FILTER, it's still simple_entity!
+- before_after: Question asks for entity BEFORE or AFTER a specific year.
+- first_last: Question asks for first/last in a sequence.
+- time_join: Requires linking TWO events via temporal overlap.
+
+Output ONLY valid JSON:
+{
+    "entities": ["Entity1", "Entity2"],
+    "relation": "Relation Name",
+    "time": "YYYY" or null,
+    "anchor_entity": "EntityName" or null,
+    "anchor_event": "EventName" or null,
+    "type": "question_type",
+    "answer_type": "year" or "entity"
+}
+"""
         prompt = f"Question: {question}"
         
         response = self.generate(prompt, system=system_prompt, json_mode=True)

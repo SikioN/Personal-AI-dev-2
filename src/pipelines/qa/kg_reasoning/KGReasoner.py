@@ -7,8 +7,6 @@ from .config import KGR_MAIN_LOG_PATH, AVAILABLE_KG_REASONERS
 from .utils import BaseKGReasonerConfig
 from ....utils import ReturnInfo, Logger
 from ....kg_model import KnowledgeGraphModel
-from ....db_drivers.kv_driver import KeyValueDriverConfig
-
 @dataclass
 class KnowledgeGraphReasonerConfig:
     reasoner_name: str = 'weak'
@@ -20,10 +18,10 @@ class KnowledgeGraphReasonerConfig:
 class KnowledgeGraphReasoner:
     def __init__(self, kg_model: KnowledgeGraphModel,
                  config: KnowledgeGraphReasonerConfig = KnowledgeGraphReasonerConfig(),
-                 cache_kvdriver_config: KeyValueDriverConfig = None):
+                 cache_kvdriver_config=None):
         self.config = config
         self.reasoner = AVAILABLE_KG_REASONERS[self.config.reasoner_name](
-            kg_model, self.config.reasoner_hyperparameters, cache_kvdriver_config)
+            kg_model, self.config.reasoner_hyperparameters)
 
     def perform(self, query: str) -> Tuple[str, ReturnInfo]:
         answer, info = self.reasoner.perform(query)

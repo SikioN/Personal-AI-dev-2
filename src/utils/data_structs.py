@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Union, Tuple, Dict
+from typing import List, Union, Tuple, Dict, Optional
 from enum import Enum
 import hashlib
 
@@ -54,6 +54,8 @@ class Node:
     stringified: str = None
     #: Идентификатор вершины, полученный на основе её строкового представления.
     id: str = None
+    #: Alias (input name) to store alongside canonical name. NOT included in str_id computation.
+    alias_to_add: Optional[str] = None
 
 @dataclass
 class Relation:

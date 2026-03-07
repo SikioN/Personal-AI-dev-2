@@ -14,7 +14,7 @@ def find_dir_with_file(start_path, target_file):
     return None
 
 def main():
-    print("Starting TComplEx Kaggle Job (v4)...")
+    print("Starting TComplEx Kaggle Job (v6)...")
     
     # Kaggle starts in /kaggle/working/
     base_dir = os.getcwd()
@@ -50,11 +50,20 @@ def main():
 
     # Слияние оригинального датасета с out.json
     print("Merging out.json into dataset...")
-    # Примечание: предполагается, что вы прикрепили wikidata-big-sber датасет в Kaggle
-    run_cmd("python scripts/merge_out_json.py "
-            "--json_file out.json "
-            "--baseline_dir /kaggle/input/wikidata-big-sber/wikidata_big/kg/tkbc_processed_data/wikidata_big/ "
-            "--out_dir data/wikidata_extended/kg/tkbc_processed_data/wikidata_extended/")
+    
+    # by looking for 'ent_id' instead of 'train.pickle' because Kaggle dataset has multiple train.pickle files 
+    # (one for QA questions, one for KGE graph). Only the KGE graph folder has 'ent_id'.
+    dataset_base = find_dir_with_file("/kaggle/input", "ent_id")
+    if not dataset_base:
+        raise FileNotFoundError("Could not find ent_id inside /kaggle/input. Did you attach the dataset?")
+    
+    print(f"Found original dataset at: {dataset_base}")
+    # dataset_base points to something like /kaggle/input/wikidata-big-sber/wikidata_big/kg/tkbc_processed_data/wikidata_big/
+    
+    run_cmd(f"python scripts/merge_out_json.py "
+            f"--json_file out.json "
+            f"--baseline_dir {dataset_base}/ "
+            f"--out_dir data/wikidata_extended/kg/tkbc_processed_data/wikidata_extended/")
     
     # Запуск 100 эпох TComplEx
     print("Running TComplEx training...")
