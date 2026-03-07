@@ -1,8 +1,5 @@
 from ...db_drivers.tree_driver import TreeDriverConfig
 from ...db_drivers.vector_driver import VectorDriverConfig, VectorDBConnectionConfig
-from .agent_tasks.nodes_summarization import AgentSummNTaskConfigSelector
-
-DEFAULT_SUMMN_TASK_CONFIG = AgentSummNTaskConfigSelector.select(base_config_version='v1')
 
 NODESTREE_MODEL_LOG_PATH = 'log/kg_model/nodes_tree'
 

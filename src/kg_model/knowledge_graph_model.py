@@ -3,7 +3,6 @@ from dataclasses import dataclass, field
 
 from .graph_model import GraphModelConfig, GraphModel
 from .embeddings_model import EmbeddingsModelConfig, EmbeddingsModel
-from ..db_drivers.kv_driver import KeyValueDriverConfig
 from .nodestree_model import NodesTreeModelConfig, NodesTreeModel
 from ..utils import Logger
 from ..utils.data_structs import Node, Quadruplet
@@ -42,14 +41,14 @@ class KnowledgeGraphModel:
     """
 
     def __init__(self, config: KnowledgeGraphModelConfig = KnowledgeGraphModelConfig(),
-                 cache_kvdriver_config: Union[KeyValueDriverConfig, None] = None) -> None:
+                 cache_kvdriver_config=None) -> None:
         self.config = config
         self.config.graph_config.log = self.config.log
         self.config.graph_config.verbose = self.config.verbose
         self.graph_struct = GraphModel(self.config.graph_config)
-        self.embeddings_struct =  EmbeddingsModel(self.config.embeddings_config)
+        self.embeddings_struct = EmbeddingsModel(self.config.embeddings_config)
         if self.config.nodestree_config is not None:
-            self.nodestree_struct = NodesTreeModel(self.config.nodestree_config, cache_kvdriver_config)
+            self.nodestree_struct = NodesTreeModel(self.config.nodestree_config)
         else:
             self.nodestree_struct = None
 

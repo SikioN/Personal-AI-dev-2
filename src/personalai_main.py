@@ -7,8 +7,6 @@ from .pipelines.qa import QAPipeline, QAPipelineConfig
 from .pipelines.memorize import MemPipeline, MemPipelineConfig
 from .utils import Logger, ReturnInfo, Quadruplet
 from .utils.data_structs import create_id
-from .db_drivers.kv_driver import KeyValueDriverConfig
-
 RKG_LOG_PATH = "log/main"
 
 @dataclass
@@ -33,17 +31,13 @@ class PersonalAIConfig:
     verbose: bool = False
 
 class PersonalAI:
-    """Верхнеуровневый класс персонального ассистента.
+    """Верхнеуровневый класс персонального ассистента."""
 
-    :param config: Конфигурация персонального ассистента.
-    :type config: PersonalAIConfig
-    """
-    def __init__(self, config: PersonalAIConfig, cache_kvdriver_config: KeyValueDriverConfig = None):
+    def __init__(self, config: PersonalAIConfig, cache_kvdriver_config=None):
         self.config = config
         self.log = self.config.log
 
-        self.kg_model = KnowledgeGraphModel(
-            config=self.config.kg_model_config, cache_kvdriver_config=cache_kvdriver_config)
+        self.kg_model = KnowledgeGraphModel(config=self.config.kg_model_config)
         self.qa_pipeline = QAPipeline(kg_model=self.kg_model, config=config.qa_pipeline_config)
         self.mem_pipeline = MemPipeline(kg_model=self.kg_model, config=config.mem_pipeline_config)
 

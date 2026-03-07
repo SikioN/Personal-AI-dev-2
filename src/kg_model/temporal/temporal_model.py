@@ -39,39 +39,42 @@ class TemporalScorer:
         
         print(f"Loaded mappings: {self.num_entities} entities, {self.num_relations} relations, {self.num_timestamps} timestamps")
         
-        # Initialize Model
-        # TComplEx init: sizes: Tuple[int, int, int, int], rank: int
-        # sizes = (n_ent, n_rel, n_ent, n_timestamps)
-        # Checkpoint expects 2 * n_rel (inverse relations)
-        sizes = (self.num_entities, self.num_relations * 2, self.num_entities, self.num_timestamps)
-        
-        self.model = TComplEx(sizes, rank, no_time_emb=False)
-        
-        # Load Weights
+        # Load Weights first to auto-detect rank from checkpoint
         print(f"Loading weights from {checkpoint_path}...")
         if not os.path.exists(checkpoint_path):
             raise FileNotFoundError(f"Checkpoint not found at {checkpoint_path}")
-            
-        checkpoint = torch.load(checkpoint_path, map_location=device)
-        
+
+        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+
         # Handle different checkpoint formats (e.g. if wrapped in 'state_dict')
         if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
             state_dict = checkpoint['state_dict']
         else:
             state_dict = checkpoint
-            
+
         # Remove 'model.' prefix if present (common in Lightning)
         new_state_dict = {}
         for k, v in state_dict.items():
-            if k.startswith('model.'):
-                new_state_dict[k[6:]] = v
-            else:
-                new_state_dict[k] = v
-                
+            new_state_dict[k[6:] if k.startswith('model.') else k] = v
+
+        # Auto-detect rank from checkpoint shape: embeddings.0.weight has shape [n_ent, 2*rank]
+        if 'embeddings.0.weight' in new_state_dict:
+            detected_rank = new_state_dict['embeddings.0.weight'].shape[1] // 2
+            if detected_rank != rank:
+                print(f"  [INFO] rank auto-detected from checkpoint: {detected_rank} (was {rank})")
+                rank = detected_rank
+
+        # Initialize Model with correct rank
+        # TComplEx init: sizes: Tuple[int, int, int, int], rank: int
+        # sizes = (n_ent, n_rel, n_ent, n_timestamps)
+        # Checkpoint expects 2 * n_rel (inverse relations)
+        sizes = (self.num_entities, self.num_relations * 2, self.num_entities, self.num_timestamps)
+
+        self.model = TComplEx(sizes, rank, no_time_emb=False)
         self.model.load_state_dict(new_state_dict)
         self.model.to(device)
         self.model.eval()
-        print("TemporalScorer initialized successfully.")
+        print(f"TemporalScorer initialized successfully (rank={rank}).")
 
     def _load_pickle(self, filename: str):
         path = os.path.join(self.data_path, filename)

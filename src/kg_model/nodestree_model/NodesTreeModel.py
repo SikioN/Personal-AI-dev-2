@@ -9,89 +9,43 @@ import torch
 from time import time
 
 from ...db_drivers.tree_driver.utils import TreeNodeType, TreeNode, TreeIdType
-from .configs import DEFAULT_SUMMN_TASK_CONFIG, NODESTREE_MODEL_LOG_PATH, \
+from .configs import NODESTREE_MODEL_LOG_PATH, \
     SUMMNODES_VDB_DEFAULT_DRIVER_CONFIG, LEAFNODES_VDB_DEFAULT_DRIVER_CONFIG, \
         TREE_DB_DEFAULT_DRIVER_CONFIG
-from ...utils import Logger, AgentTaskSolver, AgentTaskSolverConfig, ReturnStatus
+from ...utils import Logger, ReturnStatus
 from ...utils.data_structs import Quadruplet, NodeType, create_id
 from ...utils.errors import ReturnStatus
 from ...agents import AgentDriver, AgentDriverConfig
-from ...db_drivers.kv_driver import KeyValueDriverConfig
 from ...db_drivers.vector_driver import VectorDriver, VectorDriverConfig, VectorDBInstance
 from ...db_drivers.tree_driver import TreeDriver, TreeDriverConfig
 from ...db_drivers.vector_driver.embedders import EmbedderModel, EmbedderModelConfig
 
 @dataclass
 class NodesTreeModelConfig:
-    """Конфигурация древовидной структуры данных для хранения object-вершин.
-
-    :param vectordb_leafnodes_config: ...
-    :type vectordb_leafnodes_config: VectorDriverConfig, optional
-    :param vectordb_summnodes_config: ...
-    :type vectordb_summnodes_config: VectorDriverConfig, optional
-    :param embedder_config: ...
-    :type embedder_config: EmbedderModelConfig, optional
-
-    :param treedb_config: ...
-    :type treedb_config: treedb_config, optional
-
-    :param adriver_config: ...
-    :type adriver_config: AgentDriverConfig, optional
-    :param nodes_summarization_task_config: ...
-    :type nodes_summarization_task_config: AgentTaskSolverConfig, optional
-
-    :param e2n_sim_threshold: ...
-    :type e2n_sim_threshold: float, optional
-    :param depth_rate: ...
-    :type depth_rate: float, optional
-    :param nodes_aggregation_mechanism: ...
-    :type nodes_aggregation_mechanism: str, optional
-
-    :param log: Отладочный класс для журналирования/мониторинга поведения инициализируемой компоненты. Значение по умолчанию Logger(GRAPH_MODEL_LOG_PATH).
-    :type log: Logger
-    :param verbose: Если, True, то информация о поведении класса будет сохраняться в stdout и файл-журналирования (log), иначе только в файл. Значение по умолчанию False.
-    :type verbose: bool
-    """
-
     vectordb_leafnodes_config: VectorDriverConfig = field(default_factory=lambda: LEAFNODES_VDB_DEFAULT_DRIVER_CONFIG)
     vectordb_summnodes_config: VectorDriverConfig = field(default_factory=lambda: SUMMNODES_VDB_DEFAULT_DRIVER_CONFIG)
     embedder_config: EmbedderModelConfig = field(default_factory=lambda: EmbedderModelConfig())
 
     treedb_config: TreeDriverConfig = field(default_factory=lambda: TREE_DB_DEFAULT_DRIVER_CONFIG)
 
-    adriver_config: AgentDriverConfig = field(default_factory=lambda: AgentDriverConfig())
-    nodes_summarization_task_config: AgentTaskSolverConfig = field(default_factory=lambda: DEFAULT_SUMMN_TASK_CONFIG)
-
     e2n_sim_threshold: float = 0.4
     depth_rate: float = 0.5
-    nodes_aggregation_mechanism: str = "sequencial" # "sequencial" | "parallel"
+    nodes_aggregation_mechanism: str = "sequencial"  # "sequencial" | "parallel"
 
     log: Logger = field(default_factory=lambda: Logger(NODESTREE_MODEL_LOG_PATH))
     verbose: bool = False
 
 class NodesTreeModel:
-    """Класс предназначен для представления object-вершин из графовой структуры данных в виде дерева с целью
-    повышения эффективности сопоставления имеющихся занний с сущностями/запросами из поступающих user-вопросов.
-    """
-    def __init__(self, config: NodesTreeModelConfig = NodesTreeModelConfig(),
-                 cache_kvdriver_config: KeyValueDriverConfig = None) -> None:
-        """_summary_
+    """Класс предназначен для представления object-вершин из графовой структуры данных в виде дерева."""
 
-        :param config: _description_, defaults to NodesTreeModelConfig()
-        :type config: NodesTreeModelConfig, optional
-        :param cache_kvdriver_config: _description_, defaults to None
-        :type cache_kvdriver_config: KeyValueDriverConfig, optional
-        """
+    def __init__(self, config: NodesTreeModelConfig = NodesTreeModelConfig(),
+                 cache_kvdriver_config=None) -> None:
         self.config = config
 
         self.treedb_conn = TreeDriver.connect(self.config.treedb_config)
         self.vectordb_leafnodes_conn = VectorDriver.connect(config.vectordb_leafnodes_config)
         self.vectordb_summnodes_conn = VectorDriver.connect(config.vectordb_summnodes_config)
         self.embedder = EmbedderModel(config.embedder_config)
-
-        self.agent = AgentDriver.connect(config.adriver_config)
-        self.nodes_summarization_solver = AgentTaskSolver(
-            self.agent, self.config.nodes_summarization_task_config, cache_kvdriver_config)
 
         self.log = self.config.log
         self.verbose = self.config.verbose
@@ -291,51 +245,15 @@ class NodesTreeModel:
         return traversed_nodes_ids, parent_node
 
     def summarize_path_nodes(self, traversed_nodes_ids: List[str], newnode_text: str) -> List[str]:
-        """_summary_
-
-        :param traversed_nodes_ids: _description_
-        :type traversed_nodes_ids: List[str]
-        :param newnode_text: _description_
-        :type newnode_text: str
-        :raises ValueError: _description_
-        :return: _description_
-        :rtype: List[str]
-        """
-        self.log(f"4. Старт алгоритма по суммаризации текста...", verbose=self.verbose)
-        self.log(f"4.1.1. Количество текстов для обновления: {len(traversed_nodes_ids)}", verbose=self.verbose)
-        self.log(f"4.1.2. newnode_text: '{newnode_text}'", verbose=self.verbose)
-
+        """Naive summarization: concatenate parent text with new node text."""
+        self.log(f"4. Naive summarization for {len(traversed_nodes_ids)} nodes...", verbose=self.verbose)
         new_text_summaries = []
         for node_id in traversed_nodes_ids[::-1]:
             curparent_node = self.treedb_conn.read([node_id], ids_type=TreeIdType.external)[0]
             parent_text = curparent_node.text
-            parent_descendants_num = curparent_node.props.get('descendants_num', 0)
-            self.log(f"4.2. Текущая вершина для суммаризациии с newnode_text: {curparent_node}", verbose=self.verbose)
-
-            if self.config.nodes_aggregation_mechanism == 'sequencial':
-                prev_summ_text = newnode_text if len(new_text_summaries) < 1 else new_text_summaries[-1]
-                summ_text, solve_status = self.nodes_summarization_solver.solve(
-                    current_content=parent_text, new_content=prev_summ_text,
-                    n_descendants=str(parent_descendants_num))
-
-            elif self.config.nodes_aggregation_mechanism == 'parallel':
-                summ_text, solve_status = self.nodes_summarization_solver.solve(
-                    current_content=parent_text, new_content=newnode_text,
-                    n_descendants=str(parent_descendants_num))
-
-            else:
-                raise ValueError
-
-            # Если в процессе парсинга ответа llm-агента возникла ошибка,
-            # то выполняем наивную суммаризацию
-            if solve_status != ReturnStatus.success:
-                self.log("При решении задачи-суммаризации возникла ошибка!", verbose=self.verbose)
-                summ_text = f"{parent_text}, {newnode_text}"
-
-            self.log(f"4.3. Новое значение text-поля для текущей вершины: {summ_text}", verbose=self.verbose)
+            prev_summ_text = newnode_text if len(new_text_summaries) < 1 else new_text_summaries[-1]
+            summ_text = f"{parent_text}, {prev_summ_text}"
             new_text_summaries.append(summ_text)
-
-        self.log("4.final | Сумаризаация текста выполнена успешно", verbose=self.verbose)
         return new_text_summaries[::-1]
 
     def update_vectordb_info(self, vecdb_type: TreeNodeType, ids: List[str], new_texts: List[str]) -> None:

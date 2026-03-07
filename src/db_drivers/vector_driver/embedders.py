@@ -15,10 +15,12 @@ class EmbedderModel:
 
     def __init__(self, config: EmbedderModelConfig = None) -> None:
         self.config = EmbedderModelConfig() if config is None else config
+        # Don't pass prompts= to SentenceTransformer — older versions don't support it
         self.model = SentenceTransformer(
-            config.model_name_or_path, device=config.device,
-            prompts=config.prompts
+            config.model_name_or_path, device=config.device
         )
+        self._query_prefix = config.prompts.get("query", "query: ")
+        self._doc_prefix = config.prompts.get("document", "passage: ")
 
     def encode(self, queries: List[str], **kwargs) -> List[List[float]]:
         output = self.model.encode(
@@ -26,12 +28,15 @@ class EmbedderModel:
         return [list(obj.astype(float)) for obj in output]
 
     def encode_queries(self, queries: List[str], **kwargs) -> List[List[float]]:
-        output = self.model.encode(queries, prompt_name='query',
-                                 normalize_embeddings=self.config.normalize_embeddings, **kwargs)
+        # Prepend E5 query prefix manually (compatible with all sentence-transformers versions)
+        prefixed = [self._query_prefix + q for q in queries]
+        output = self.model.encode(
+            prefixed, normalize_embeddings=self.config.normalize_embeddings, **kwargs)
         return [list(obj.astype(float)) for obj in output]
 
     def encode_passages(self, passages: List[str], **kwargs) -> List[List[float]]:
-        output = self.model.encode(passages, prompt_name='document',
-                                 normalize_embeddings=self.config.normalize_embeddings,
-                                 **kwargs)
+        # Prepend E5 passage prefix manually
+        prefixed = [self._doc_prefix + p for p in passages]
+        output = self.model.encode(
+            prefixed, normalize_embeddings=self.config.normalize_embeddings, **kwargs)
         return [list(obj.astype(float)) for obj in output]
