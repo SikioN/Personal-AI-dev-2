@@ -1,0 +1,771 @@
+[
+  {
+    "s": {
+      "name": "Albert Einstein",
+      "id": "Q937"
+    },
+    "r": {
+      "name": "birthPlace",
+      "id": "CP_000001",
+      "type": "simple"
+    },
+    "o": {
+      "name": "Ulm",
+      "id": "Q3012"
+    },
+    "t": {
+      "name": "1879 - 1879",
+      "type": "time",
+      "prop": {
+        "start": "1879",
+        "end": "1879"
+      }
+    }
+  },
+  {
+    "s": {
+      "name": "Albert Einstein",
+      "id": "Q937"
+    },
+    "r": {
+      "name": "birthPlace",
+      "id": "CP_000001",
+      "type": "simple"
+    },
+    "o": {
+      "name": "Kingdom of Württemberg",
+      "id": "Q159631"
+    },
+    "t": {
+      "name": "1879 - 1879",
+      "type": "time",
+      "prop": {
+        "start": "1879",
+        "end": "1879"
+      }
+    }
+  },
+  {
+    "s": {
+      "name": "Albert Einstein",
+      "id": "Q937"
+    },
+    "r": {
+      "name": "located in the administrative territorial entity",
+      "id": "P131",
+      "type": "simple"
+    },
+    "o": {
+      "name": "Munich",
+      "id": "Q1726"
+    },
+    "t": {
+      "name": "1879 - 1894",
+      "type": "time",
+      "prop": {
+        "start": "1879",
+        "end": "1894"
+      }
+    },
+    "_r_raw": "resided in"
+  },
+  {
+    "s": {
+      "name": "Albert Einstein",
+      "id": "Q937"
+    },
+    "r": {
+      "name": "located in the administrative territorial entity",
+      "id": "P131",
+      "type": "simple"
+    },
+    "o": {
+      "name": "Aarau",
+      "id": "Q14274"
+    },
+    "t": {
+      "name": "1895 - 1896",
+      "type": "time",
+      "prop": {
+        "start": "1895",
+        "end": "1896"
+      }
+    },
+    "_r_raw": "resided in"
+  },
+  {
+    "s": {
+      "name": "Albert Einstein",
+      "id": "Q937"
+    },
+    "r": {
+      "name": "country of citizenship",
+      "id": "P27",
+      "type": "simple"
+    },
+    "o": {
+      "name": "Switzerland",
+      "id": "Q39"
+    },
+    "t": {
+      "name": "1901 - 1955",
+      "type": "time",
+      "prop": {
+        "start": "1901",
+        "end": "1955"
+      }
+    }
+  },
+  {
+    "s": {
+      "name": "Albert Einstein",
+      "id": "Q937"
+    },
+    "r": {
+      "name": "educated at",
+      "id": "P69",
+      "type": "simple"
+    },
+    "o": {
+      "name": "ETH Zurich",
+      "id": "Q11942"
+    },
+    "t": {
+      "name": "1900 - 1900",
+      "type": "time",
+      "prop": {
+        "start": "1900",
+        "end": "1900"
+      }
+    }
+  },
+  {
+    "s": {
+      "name": "Albert Einstein",
+      "id": "Q937"
+    },
+    "r": {
+      "name": "academic degree",
+      "id": "P512",
+      "type": "simple"
+    },
+    "o": {
+      "name": "University of Zurich",
+      "id": "Q206702"
+    },
+    "t": {
+      "name": "1905 - 1905",
+      "type": "time",
+      "prop": {
+        "start": "1905",
+        "end": "1905"
+      }
+    },
+    "_r_raw": "degree received"
+  },
+  {
+    "s": {
+      "name": "Albert Einstein",
+      "id": "Q937"
+    },
+    "r": {
+      "name": "unemployment rate",
+      "id": "P1198",
+      "type": "simple"
+    },
+    "o": {
+      "name": "Swiss Patent Office",
+      "id": "CQ_000001"
+    },
+    "t": {
+      "name": "1902 - 1902",
+      "type": "time",
+      "prop": {
+        "start": "1902",
+        "end": "1902"
+      }
+    },
+    "_r_raw": "employment"
+  },
+  {
+    "s": {
+      "name": "Albert Einstein",
+      "id": "Q937"
+    },
+    "r": {
+      "name": "place of publication",
+      "id": "P291",
+      "type": "simple"
+    },
+    "o": {
+      "name": "Annus Mirabilis papers",
+      "id": "Q51497"
+    },
+    "t": {
+      "name": "1905 - 1905",
+      "type": "time",
+      "prop": {
+        "start": "1905",
+        "end": "1905"
+      }
+    },
+    "_r_raw": "publication"
+  },
+  {
+    "s": {
+      "name": "Albert Einstein",
+      "id": "Q937"
+    },
+    "r": {
+      "name": "spouse",
+      "id": "P26",
+      "type": "simple"
+    },
+    "o": {
+      "name": "Mileva Marić",
+      "id": "Q76346"
+    },
+    "t": {
+      "name": "1903 - 1903",
+      "type": "time",
+      "prop": {
+        "start": "1903",
+        "end": "1903"
+      }
+    }
+  },
+  {
+    "s": {
+      "name": "Albert Einstein",
+      "id": "Q937"
+    },
+    "r": {
+      "name": "child",
+      "id": "P40",
+      "type": "simple"
+    },
+    "o": {
+      "name": "Lieserl",
+      "id": "Q108030563"
+    },
+    "t": {
+      "name": "1902 - 1902",
+      "type": "time",
+      "prop": {
+        "start": "1902",
+        "end": "1902"
+      }
+    }
+  },
+  {
+    "s": {
+      "name": "Albert Einstein",
+      "id": "Q937"
+    },
+    "r": {
+      "name": "child",
+      "id": "P40",
+      "type": "simple"
+    },
+    "o": {
+      "name": "Hans Albert",
+      "id": "Q62309"
+    },
+    "t": {
+      "name": "1904 - 1904",
+      "type": "time",
+      "prop": {
+        "start": "1904",
+        "end": "1904"
+      }
+    }
+  },
+  {
+    "s": {
+      "name": "Albert Einstein",
+      "id": "Q937"
+    },
+    "r": {
+      "name": "child",
+      "id": "P40",
+      "type": "simple"
+    },
+    "o": {
+      "name": "Eduard",
+      "id": "Q18031774"
+    },
+    "t": {
+      "name": "1910 - 1910",
+      "type": "time",
+      "prop": {
+        "start": "1910",
+        "end": "1910"
+      }
+    }
+  },
+  {
+    "s": {
+      "name": "Albert Einstein",
+      "id": "Q937"
+    },
+    "r": {
+      "name": "spouse",
+      "id": "P26",
+      "type": "simple"
+    },
+    "o": {
+      "name": "Elsa Einstein",
+      "id": "Q68761"
+    },
+    "t": {
+      "name": "1919 - 1919",
+      "type": "time",
+      "prop": {
+        "start": "1919",
+        "end": "1919"
+      }
+    }
+  },
+  {
+    "s": {
+      "name": "Albert Einstein",
+      "id": "Q937"
+    },
+    "r": {
+      "name": "position held",
+      "id": "P39",
+      "type": "simple"
+    },
+    "o": {
+      "name": "University of Zurich",
+      "id": "Q206702"
+    },
+    "t": {
+      "name": "1909 - 1909",
+      "type": "time",
+      "prop": {
+        "start": "1909",
+        "end": "1909"
+      }
+    }
+  },
+  {
+    "s": {
+      "name": "Albert Einstein",
+      "id": "Q937"
+    },
+    "r": {
+      "name": "position held",
+      "id": "P39",
+      "type": "simple"
+    },
+    "o": {
+      "name": "Charles University",
+      "id": "Q31519"
+    },
+    "t": {
+      "name": "1911 - 1911",
+      "type": "time",
+      "prop": {
+        "start": "1911",
+        "end": "1911"
+      }
+    }
+  },
+  {
+    "s": {
+      "name": "Albert Einstein",
+      "id": "Q937"
+    },
+    "r": {
+      "name": "position held",
+      "id": "P39",
+      "type": "simple"
+    },
+    "o": {
+      "name": "ETH Zurich",
+      "id": "Q11942"
+    },
+    "t": {
+      "name": "1912 - 1912",
+      "type": "time",
+      "prop": {
+        "start": "1912",
+        "end": "1912"
+      }
+    }
+  },
+  {
+    "s": {
+      "name": "Albert Einstein",
+      "id": "Q937"
+    },
+    "r": {
+      "name": "position held",
+      "id": "P39",
+      "type": "simple"
+    },
+    "o": {
+      "name": "Prussian Academy of Sciences",
+      "id": "Q329464"
+    },
+    "t": {
+      "name": "1914 - 1914",
+      "type": "time",
+      "prop": {
+        "start": "1914",
+        "end": "1914"
+      }
+    }
+  },
+  {
+    "s": {
+      "name": "Albert Einstein",
+      "id": "Q937"
+    },
+    "r": {
+      "name": "located in the administrative territorial entity",
+      "id": "P131",
+      "type": "simple"
+    },
+    "o": {
+      "name": "Berlin",
+      "id": "Q64"
+    },
+    "t": {
+      "name": "1914 - 1933",
+      "type": "time",
+      "prop": {
+        "start": "1914",
+        "end": "1933"
+      }
+    },
+    "_r_raw": "resided in"
+  },
+  {
+    "s": {
+      "name": "Albert Einstein",
+      "id": "Q937"
+    },
+    "r": {
+      "name": "place of publication",
+      "id": "P291",
+      "type": "simple"
+    },
+    "o": {
+      "name": "Theory of General Relativity",
+      "id": "CQ_000002"
+    },
+    "t": {
+      "name": "1915 - 1915",
+      "type": "time",
+      "prop": {
+        "start": "1915",
+        "end": "1915"
+      }
+    },
+    "_r_raw": "publication"
+  },
+  {
+    "s": {
+      "name": "Albert Einstein",
+      "id": "Q937"
+    },
+    "r": {
+      "name": "award received",
+      "id": "P166",
+      "type": "simple"
+    },
+    "o": {
+      "name": "Nobel Prize in Physics",
+      "id": "Q38104"
+    },
+    "t": {
+      "name": "1921 - 1921",
+      "type": "time",
+      "prop": {
+        "start": "1921",
+        "end": "1921"
+      }
+    }
+  },
+  {
+    "s": {
+      "name": "Albert Einstein",
+      "id": "Q937"
+    },
+    "r": {
+      "name": "award received",
+      "id": "P166",
+      "type": "simple"
+    },
+    "o": {
+      "name": "Copley Medal",
+      "id": "Q28003"
+    },
+    "t": {
+      "name": "1925 - 1925",
+      "type": "time",
+      "prop": {
+        "start": "1925",
+        "end": "1925"
+      }
+    }
+  },
+  {
+    "s": {
+      "name": "Albert Einstein",
+      "id": "Q937"
+    },
+    "r": {
+      "name": "award received",
+      "id": "P166",
+      "type": "simple"
+    },
+    "o": {
+      "name": "Max Planck Medal",
+      "id": "Q317038"
+    },
+    "t": {
+      "name": "1929 - 1929",
+      "type": "time",
+      "prop": {
+        "start": "1929",
+        "end": "1929"
+      }
+    }
+  },
+  {
+    "s": {
+      "name": "Albert Einstein",
+      "id": "Q937"
+    },
+    "r": {
+      "name": "member of",
+      "id": "P463",
+      "type": "simple"
+    },
+    "o": {
+      "name": "Royal Society",
+      "id": "Q123885"
+    },
+    "t": {
+      "name": "1921 - 1921",
+      "type": "time",
+      "prop": {
+        "start": "1921",
+        "end": "1921"
+      }
+    }
+  },
+  {
+    "s": {
+      "name": "Albert Einstein",
+      "id": "Q937"
+    },
+    "r": {
+      "name": "member of",
+      "id": "P463",
+      "type": "simple"
+    },
+    "o": {
+      "name": "National Academy of Sciences",
+      "id": "Q270794"
+    },
+    "t": {
+      "name": "1942 - 1942",
+      "type": "time",
+      "prop": {
+        "start": "1942",
+        "end": "1942"
+      }
+    }
+  },
+  {
+    "s": {
+      "name": "Albert Einstein",
+      "id": "Q937"
+    },
+    "r": {
+      "name": "located in the administrative territorial entity",
+      "id": "P131",
+      "type": "simple"
+    },
+    "o": {
+      "name": "Princeton, New Jersey",
+      "id": "Q138518"
+    },
+    "t": {
+      "name": "1933 - 1955",
+      "type": "time",
+      "prop": {
+        "start": "1933",
+        "end": "1955"
+      }
+    },
+    "_r_raw": "resided in"
+  },
+  {
+    "s": {
+      "name": "Albert Einstein",
+      "id": "Q937"
+    },
+    "r": {
+      "name": "country of citizenship",
+      "id": "P27",
+      "type": "simple"
+    },
+    "o": {
+      "name": "United States",
+      "id": "Q30"
+    },
+    "t": {
+      "name": "1940 - 1955",
+      "type": "time",
+      "prop": {
+        "start": "1940",
+        "end": "1955"
+      }
+    }
+  },
+  {
+    "s": {
+      "name": "Albert Einstein",
+      "id": "Q937"
+    },
+    "r": {
+      "name": "diagnosed with",
+      "id": "CP_000002",
+      "type": "simple"
+    },
+    "o": {
+      "name": "abdominal aortic aneurysm",
+      "id": "Q2256736"
+    },
+    "t": {
+      "name": "1955 - 1955",
+      "type": "time",
+      "prop": {
+        "start": "1955",
+        "end": "1955"
+      }
+    }
+  },
+  {
+    "s": {
+      "name": "Albert Einstein",
+      "id": "Q937"
+    },
+    "r": {
+      "name": "treatment refused",
+      "id": "CP_000003",
+      "type": "simple"
+    },
+    "o": {
+      "name": "surgery",
+      "id": "Q40821"
+    },
+    "t": {
+      "name": "1955 - 1955",
+      "type": "time",
+      "prop": {
+        "start": "1955",
+        "end": "1955"
+      }
+    }
+  },
+  {
+    "s": {
+      "name": "Albert Einstein",
+      "id": "Q937"
+    },
+    "r": {
+      "name": "category for people who died here",
+      "id": "P1465",
+      "type": "simple"
+    },
+    "o": {
+      "name": "Princeton",
+      "id": "Q138518"
+    },
+    "t": {
+      "name": "1955 - 1955",
+      "type": "time",
+      "prop": {
+        "start": "1955",
+        "end": "1955"
+      }
+    },
+    "_r_raw": "died"
+  },
+  {
+    "s": {
+      "name": "Albert Einstein",
+      "id": "Q937"
+    },
+    "r": {
+      "name": "located in the administrative territorial entity",
+      "id": "P131",
+      "type": "simple"
+    },
+    "o": {
+      "name": "Princeton Cemetery",
+      "id": "Q7244940"
+    },
+    "t": {
+      "name": "1955 - 1955",
+      "type": "time",
+      "prop": {
+        "start": "1955",
+        "end": "1955"
+      }
+    },
+    "_r_raw": "buried in"
+  },
+  {
+    "s": {
+      "name": "Albert Einstein",
+      "id": "Q937"
+    },
+    "r": {
+      "name": "archive transferred to",
+      "id": "CP_000004",
+      "type": "simple"
+    },
+    "o": {
+      "name": "Hebrew University of Jerusalem",
+      "id": "Q174158"
+    },
+    "t": {
+      "name": "1966 - 1966",
+      "type": "time",
+      "prop": {
+        "start": "1966",
+        "end": "1966"
+      }
+    }
+  },
+  {
+    "s": {
+      "name": "Albert Einstein",
+      "id": "Q937"
+    },
+    "r": {
+      "name": "commemorated",
+      "id": "CP_000005",
+      "type": "simple"
+    },
+    "o": {
+      "name": "Einstein Year 2005",
+      "id": "CQ_000003"
+    },
+    "t": {
+      "name": "2005 - 2005",
+      "type": "time",
+      "prop": {
+        "start": "2005",
+        "end": "2005"
+      }
+    }
+  }
+]

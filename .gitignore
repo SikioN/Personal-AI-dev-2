@@ -3,6 +3,7 @@
 .env
 __pycache__/
 *.pyc
+*.pyo
 pai_venv/
 .dvc/
 .dvcignore
@@ -17,8 +18,10 @@ models/
 *.bin
 *.pt
 *.pkl
+*.pickle
 *.tar
 *.zip
+*.safetensors
 output.png
 *.pdf
 
@@ -31,19 +34,20 @@ ingestion_full_log/
 ingestion_neo4j_log/
 qa_subset_log/
 wandb/
-ingestion_process_details.txt
+*_log/
 
 # --- External Repos / Copies ---
-# Only exclude the full nested repo, but keep source code if present
-CronKGQA/
-kaggle_job/CronKGQA/
+/CronKGQA/
+/kaggle_job/
 
 # --- Temporary / Scratch ---
 tmp/
 debug/
 archive/
 archives/
-test_graph_vs_qa_Ilnaz.ipynb
+
+# --- Experiments ---
+experiments/
 
 # --- Specific Experiments Artifacts ---
 experiments/**/results/
@@ -58,23 +62,71 @@ docs/_build
 docs/build
 docs/log
 
-# --- Specific Exclusions per DataSphere Plan ---
-# --- Specific Exclusions per DataSphere Plan ---
+# --- Artifacts ---
 *.html
 *.txt
 *.csv
-*.md
-*.pdf
-app.py
-speech_script.txt
 
+# Exceptions
 !/requirements.txt
+!/requirements*.txt
 !/README.md
 
-# --- Ignore ALL notebooks by default ---
+# --- Legacy entry points ---
+app.py
+
+# --- One-off scripts (root level) ---
+add_hybrid_to_notebook.py
+analyze_test_pickle.py
+check_presence.py
+create_benchmark_hybrid_notebook.py
+create_zip.py
+debug_chroma.py
+debug_pipeline.py
+fix_graph_memory.py
+fix_notebook.py
+fix_ollama_url.py
+fix_quadruplet_naming.py
+get_imports.py
+inspect_cronkgqa_test.py
+inspect_pickle.py
+inspect_simple_time.py
+inspect_triplet_structure.py
+inspect_vector_db.py
+inspect_vector_db_raw.py
+kaggle_train.py
+patch_notebook.py
+regenerate_notebook_v2.py
+rewrite_hybrid_benchmark.py
+rewrite_qa_notebook_yandex.py
+run_benchmark_comparison.py
+test_log.py
+test_pipeline_integration.py
+update_benchmark_logic.py
+update_datasphere_ask.py
+update_datasphere_ask_debug.py
+update_datasphere_ask_dynamic.py
+update_datasphere_ask_multihop.py
+validate_scorer_only.py
+validate_temporal_model.py
+verify_benchmark.py
+
+# --- One-off notebook scripts ---
+notebooks/inject_debug_cells.py
+notebooks/qa_v3_patch.py
+notebooks/qa_v3_patch_cell.py
+notebooks/nabokov_connections.py
+notebooks/explore_nabokov_kg.py
+notebooks/patch_ranking_display.py
+notebooks/debug_ask.py
+
+# --- All notebooks by default ---
 *.ipynb
 
 # --- Keep ONLY specific notebooks ---
-!/notebooks/metrics/benchmark_tcomplex.ipynb
-!/notebooks/qa_experiments_v2.ipynb
+!/notebooks/qa_experiments_v3_improved.ipynb
 
+# --- IDEs & Tools ---
+.vscode/
+.idea/
+.claude/
