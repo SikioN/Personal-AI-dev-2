@@ -48,6 +48,12 @@ class ChromaConnection(AbstractVectorDatabaseConnection):
         pass
 
     def close_connection(self) -> ReturnInfo:
+        # 3.4: explicitly close the PersistentClient to flush WAL before GC
+        if self.client is not None and hasattr(self.client, 'close'):
+            try:
+                self.client.close()
+            except Exception:
+                pass
         self.collection = None
         self.client = None
         gc.collect()

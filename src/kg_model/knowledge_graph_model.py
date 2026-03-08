@@ -1,3 +1,5 @@
+import logging as _logging
+import time as _time
 from typing import List, Dict, Set, Union
 from dataclasses import dataclass, field
 
@@ -81,8 +83,32 @@ class KnowledgeGraphModel:
         :return: Словарь с информацией о квадруплетах, которые были добавлены в память ассистента.
         :rtype: Dict[str, Dict[str,Set[str]]]
         """
-        graph_create_info = self.graph_struct.create_quadruplets(quadruplets, status_bar=status_bar)
-        embd_create_info = self.embeddings_struct.create_quadruplets(quadruplets, status_bar=status_bar)
+        # 4.1: Neo4j is Source of Truth — never roll it back.
+        # ChromaDB is a derived view; retry up to 3 times with exponential backoff.
+        try:
+            graph_create_info = self.graph_struct.create_quadruplets(quadruplets, status_bar=status_bar)
+        except Exception as e:
+            raise RuntimeError(f"Neo4j write failed: {e}") from e
+
+        _kg_logger = _logging.getLogger(__name__)
+        last_exc = None
+        for attempt in range(3):
+            try:
+                embd_create_info = self.embeddings_struct.create_quadruplets(quadruplets, status_bar=status_bar)
+                last_exc = None
+                break
+            except Exception as e:
+                last_exc = e
+                _kg_logger.warning("ChromaDB write attempt %d failed: %s", attempt + 1, e)
+                if attempt < 2:
+                    _time.sleep(0.5 * (2 ** attempt))
+
+        if last_exc is not None:
+            _kg_logger.error(
+                "ChromaDB desync after 3 attempts — Neo4j is ahead. "
+                "Run re-sync to fix. Error: %s", last_exc
+            )
+            raise RuntimeError(f"ChromaDB write failed (Neo4j intact): {last_exc}") from last_exc
 
         if self.nodestree_struct is not None:
             # Note: NodeTree might still need refactoring, assuming it accepts the new struct or needs work too.

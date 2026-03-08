@@ -1,101 +1,138 @@
-# Personal-AI KG QA Navigator (Production Engine v3)
+# Personal-AI KG QA Navigator
 
-Готовая к production система вопросно-ответного поиска поверх графов знаний (Knowledge Graphs) с гибридным Retrieval (Neo4j + ChromaDB), 5-уровневой дедупликацией сущностей (Entity Resolution) и темпоральным скорингом (TComplEx). Система поддерживает произвольные данные и безопасное инкрементальное обновление. Интерфейс — **Telegram-бот**.
+Ready-to-production система вопросно-ответного поиска поверх графов знаний (Knowledge Graphs). Проект реализует гибридную архитектуру Retrieval-Augmented Generation (RAG), полностью заменяя традиционные алгоритмы обхода графа на нейросетевой семантический поиск, совмещенный с темпоральным ранжированием.
 
 ## Архитектура системы
 
-Проект реализует **7-уровневый пайплайн** ответов на вопросы:
-1. **Extraction**: Извлечение сущностей, типов вопросов и временных рамок с использованием LLM.
-2. **Resolution**: 5-уровневое разрешение сущностей (Exact ID → Exact Neo4j → Lexical RapidFuzz → Vector ChromaDB → LLM Disambiguation → Новая сущность `LOCAL_`).
-3. **Retrieval**: Поиск соседей в графе (hop 1) для найденных сущностей.
-4. **Vector Fallback**: Использование ChromaDB, если в графе ничего не найдено.
-5. **Scoring**: Гибридное ранжирование (E5 cosine similarity + Temporal Scorer Pytorch).
-6. **Selection**: Отбор релевантных фактов на основе "разрыва уверенности" (Confidence Gap).
-7. **Generation**: Генерация финального ответа LLM на базе отобранных "анонимизированных" фактов.
+Базовая логика инкапсулирована внутри класса `QAEngine` и состоит из 7-стадийного конвейера:
+
+1. **Extraction (LLM-Диспетчер)**: LLM анализирует запрос пользователя для извлечения ключевых сущностей, определения типа вопроса (например, `time_join`, `before_after`) и идентификации временных рамок.
+2. **Entity Resolution**: Исходный текст преобразуется в Q-ID (идентификаторы Wikidata) с помощью 5-уровневого процесса разрешения сущностей. Процесс включает дедупликацию и генерацию локальных идентификаторов (`LOCAL_`) для ранее неизвестных сущностей.
+3. **Graph Retrieval (Neo4j)**: Строгий поиск по графу (соседи 1-го порядка) вокруг разрешенных сущностей с использованием параметризованных Cypher-запросов.
+4. **Vector Retrieval (ChromaDB + E5)**: Параллельный семантический поиск с использованием модели `intfloat/multilingual-e5-small`. Извлекает факты на основе концептуальной близости, преодолевая лексические разрывы.
+5. **Scoring (TComplEx)**: Математическое ядро системы. Модель тензорной факторизации оценивает математическую вероятность (logits) извлеченных фактов. На этом этапе строго применяется темпоральный фильтр для отсечения фактов, не соответствующих временным рамкам запроса.
+6. **Selection**: Механизм "Confidence Gap" выделяет только те факты, чья математическая уверенность значительно превышает фоновый информационный шум.
+7. **Generation (LLM)**: LLM обрабатывает отфильтрованные и анонимизированные факты для генерации ответа на естественном языке, строго опирающегося на извлеченный контекст, исключая галлюцинации.
 
 ---
 
-## Быстрый старт
+## Структура проекта и ключевые компоненты
+
+Репозиторий организован вокруг современного конвейера V3:
+
+* **`bot.py`** — Главная точка входа. Инициализирует асинхронный Telegram-бот (aiogram) и регистрирует обработчики команд (`/ask`, `/facts`, `/graph`).
+* **`src/bot/engine_loader.py`** — Singleton-фабрика, отвечающая за инстанцирование движка. Направляет инициализацию в production-окружение (Neo4j+ChromaDB) или выполняет graceful-деградацию до in-memory движка на основе конфигурации `.env`.
+* **`src/pipelines/qa/qa_engine.py`** — Класс-оркестратор (`QAEngine`). Агрегирует 7 стадий QA-конвейера.
+* **`src/kg_model/knowledge_graph_model.py`** — Единый контроллер баз данных, абстрагирующий операции для драйверов Neo4j и ChromaDB.
+* **`src/pipelines/ingestion/temporal_kg_ingester.py`** — Модуль загрузки данных, обрабатывающий разрешение сущностей и синхронизацию баз данных.
+* **`src/bot/graph_renderer.py`** — Специализированный рендерер для генерации подграфов в виде изображений с помощью NetworkX и Matplotlib.
+
+---
+
+## Деплой Production-сервера
+
+Для развертывания QA-конвейера уровня production требуются активные инстансы Neo4j и ChromaDB, а также корректно настроенные API-ключи для выбранного LLM-бэкенда.
+
+### 1. Поднятие баз данных
+
+Включенный `docker-compose.yml` организует работу необходимых сервисов баз данных. Выполните в корне проекта:
 
 ```bash
-# 1. Клонировать репозиторий
-git clone <repo_url> && cd personal-ai
-
-# 2. Настроить окружение
-cp .env.example .env
-# Указать TELEGRAM_BOT_TOKEN, LLM_BACKEND, NEO4J_PASSWORD и нужные API-ключи
-
-# 3. Запустить через Docker Compose
-docker compose up --build -d
+docker compose up -d neo4j chromadb
 ```
 
-Подробнее: [docs/deployment.md](docs/deployment.md)
+* **Neo4j** предоставляет интерфейс Bolt по адресу `neo4j://localhost:7687` (Логин: `neo4j`, Пароль задается через `.env`).
+* **ChromaDB** предоставляет HTTP API по адресу `http://localhost:8000`.
 
----
+### 2. Конфигурация окружения
 
-## Команды Telegram-бота
-
-| Команда | Действие |
-|---------|----------|
-| `/ask <вопрос>` | Полный 7-стадийный пайплайн → текстовый ответ |
-| `/facts <вопрос>` | Топ-N фактов с оценками confidence |
-| `/graph <вопрос>` | 1-hop подграф → PNG изображение |
-| `/settings` | Текущие настройки (top_k, confidence) |
-| `/set top_k N` | Изменить top_k (1–15) |
-| `/set confidence X` | Изменить min_confidence (0.0–1.0) |
-| `/status` | Статус Neo4j, ChromaDB, LLM-бэкенда |
-| `/help` | Список команд |
-
----
-
-## Инкрементальное обновление данных
-
-Подготовьте `facts.json` в формате S-R-O-T (см. [docs/data_format.md](docs/data_format.md)):
+Скопируйте файл примера окружения и настройте его. Убедитесь, что параметр `USE_INMEMORY` установлен в `false` для маршрутизации в production.
 
 ```bash
-python scripts/incremental_update.py --input facts.json \
+cp .env.example .env
+```
+
+Обязательные переменные в `.env`:
+```ini
+USE_INMEMORY=false
+TELEGRAM_BOT_TOKEN="your-telegram-token"
+LLM_BACKEND="deepseek"
+DEEPSEEK_API_KEY="your-api-key"
+NEO4J_PASSWORD="strong_password"
+```
+
+### 3. Запуск приложения
+
+После того как базы данных станут доступны и окружение будет настроено, запустите процесс QA-бота:
+
+```bash
+python bot.py
+```
+
+---
+
+## Формат данных
+
+Данные должны быть структурированы в виде квадруплетов S-R-O-T (Subject, Relation, Object, Time) для корректной обработки компонентом Entity Resolver и загрузки в граф.
+
+Входные данные должны представлять собой JSON-массив словарей:
+
+```json
+[
+  {
+    "subject": "Vladimir Nabokov",
+    "relation": "spouse",
+    "object": "Vera Nabokova",
+    "time": "1925-present",
+    "subject_id": "Q2152", 
+    "object_id": "Q1605333" 
+  }
+]
+```
+*Примечание: Поле `relation` должно быть строго в формате `snake_case`. Поля `subject_id` и `object_id` опциональны; если они опущены, система генерирует хеши.*
+
+---
+
+## Инкрементальное обновление и дообучение моделей
+
+Обновление базы знаний системы требует строгого двухэтапного процесса для обеспечения согласованности данных между структурными базами данных и алгоритмом ранжирования.
+
+### Этап 1: Ингестия в базы данных
+`TemporalKGIngester` обрабатывает сырые квадруплеты и атомарно записывает их в обе системы:
+1. **Neo4j** (Обновление структуры графа).
+2. **ChromaDB** (Векторные эмбеддинги E5 для семантического поиска).
+Параллельно обновляются локализованные Pickle-словари (`ent_id` и `rel_id`), необходимые для TComplEx.
+
+```bash
+python scripts/incremental_update.py \
+  --input new_facts.json \
   --tkbc-dir wikidata_big/kg/tkbc_processed_data/wikidata_big/
 ```
 
-Подробнее: [docs/ingestion_guide.md](docs/ingestion_guide.md) | [docs/retrain_guide.md](docs/retrain_guide.md)
+### Этап 2: Дообучение TComplEx
+Темпоральный скорер (TComplEx) должен быть дообучен для расчета логитов для вновь загруженных узлов и связей. Скрипт использует обновленные Pickle-файлы и возобновляет обучение с последнего чекпоинта (warm start).
+
+```bash
+python scripts/retrain_tcomplex.py \
+  --data wikidata_big/kg/tkbc_processed_data/wikidata_big/ \
+  --ckpt models/wikidata_finetuned_remote/wikidata_finetuned/model.ckpt \
+  --epochs 20
+```
+
+После завершения процесса инстанс `bot.py` необходимо перезапустить, чтобы загрузить обновленные веса `model.ckpt` в память `QAEngine`.
 
 ---
 
-## Структура проекта
+## Клиентский интерфейс (Telegram Bot)
 
-```
-bot.py                    — точка входа (Telegram-бот)
-src/
-  bot/
-    engine_loader.py      — инициализация QAEngine (singleton)
-    handlers.py           — aiogram handlers (/ask, /facts, /graph, ...)
-    formatters.py         — форматирование ответов для Telegram MarkdownV2
-    graph_renderer.py     — NetworkX + matplotlib → PNG
-  llm/                    — клиенты для 6 LLM-бэкендов
-  db_drivers/             — Neo4j и ChromaDB коннекторы
-  pipelines/qa/           — 7-ступенчатый QA пайплайн (QAEngine)
-  pipelines/ingestion/    — EntityResolver, TemporalKGIngester
-  config/qa_config.py     — QAConfig (все гиперпараметры)
-  utils/kg_navigator.py   — KGNavigator (подграф)
-scripts/
-  incremental_update.py   — атомарное добавление фактов
-  retrain_tcomplex.py     — переобучение TComplEx
-docs/
-  data_format.md          — формат S-R-O-T квадруплетов
-  deployment.md           — развёртывание
-  ingestion_guide.md      — заполнение Neo4j/ChromaDB
-  retrain_guide.md        — переобучение модели
-```
+Пользователи взаимодействуют с QAEngine исключительно через Telegram-интерфейс.
 
-## LLM-бэкенды
-
-Установить переменную `LLM_BACKEND` в `.env`:
-
-| Значение | Переменные |
-|----------|-----------|
-| `ollama` | `OLLAMA_URL`, `OLLAMA_MODEL` |
-| `yandexgpt` | `YANDEX_API_KEY`, `YANDEX_FOLDER_ID`, `YANDEX_MODEL` |
-| `deepseek` | `DEEPSEEK_API_KEY`, `DEEPSEEK_MODEL` |
-| `gigachat` | `GIGACHAT_CREDENTIALS`, `GIGACHAT_MODEL` |
-| `openai` | `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_BASE_URL` |
-| `qwen` | `QWEN_API_KEY`, `QWEN_MODEL` |
+| Команда | Действие |
+|---------|----------|
+| `/ask <запрос>` | Выполняет полный 7-стадийный QA-конвейер и возвращает ответ на естественном языке, сгенерированный LLM. |
+| `/facts <запрос>` | Выводит отладочную трассировку, включая сырые факты, косинусные сходства E5 и логиты TComplEx. |
+| `/graph <сущность>` | Рендерит и возвращает PNG-визуализацию 1-hop подграфа с центром в целевой сущности. |
+| `/settings` | Отображает текущие системные гиперпараметры (`top_k`, `confidence`). |
+| `/set <param> <val>` | Мутирует параметры активной сессии (например, `/set top_k 15`). |
+| `/status` | Возвращает статус работоспособности и текущий режим работы (Production/In-Memory). |
+| `/help` | Отображает документацию по командам. |

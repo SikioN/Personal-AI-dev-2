@@ -1,6 +1,7 @@
 from neo4j import GraphDatabase
 from typing import List, Dict, Union, Tuple
 import json
+import re as _re
 
 from ..utils import GraphDBConnectionConfig, AbstractGraphDatabaseConnection
 from ....utils.data_structs import (
@@ -27,8 +28,12 @@ class Neo4jConnector(AbstractGraphDatabaseConnection):
             print("Failed to create the driver:", e)
 
         try:
+            # 3.2: validate db name to prevent Cypher injection via config value
+            db_name = self.config.db_info["db"]
+            if not _re.match(r'^[A-Za-z0-9_]+$', db_name):
+                raise ValueError(f"Invalid database name: {db_name!r} (only [A-Za-z0-9_] allowed)")
             self.execute_query(
-                f'CREATE DATABASE {self.config.db_info["db"]} IF NOT EXISTS', db_flag=False)
+                f'CREATE DATABASE {db_name} IF NOT EXISTS', db_flag=False)
         except Exception as e:
             print(f"Warning: Could not create database: {e}")
 
@@ -81,6 +86,13 @@ class Neo4jConnector(AbstractGraphDatabaseConnection):
     # Query builders — parameterized (no f-string injection)
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _validate_label(label: str) -> str:
+        """3.3: whitelist-validate node/relation type labels before interpolation."""
+        if not _re.match(r'^[A-Za-z0-9_]+$', label):
+            raise ValueError(f"Invalid node/relation label: {label!r}")
+        return label
+
     def create_node_query(self, node: Node) -> Tuple[str, dict]:
         """Returns (cypher_query, params_dict). Uses MERGE + parameterized props."""
         props = {
@@ -90,10 +102,11 @@ class Neo4jConnector(AbstractGraphDatabaseConnection):
         props['str_id'] = node.id
         props['name'] = node.name
 
+        node_label = self._validate_label(node.type.value)
         alias = getattr(node, 'alias_to_add', None)
         if alias and alias != node.name:
             query = (
-                f"MERGE (n:{node.type.value} {{str_id: $str_id}}) "
+                f"MERGE (n:{node_label} {{str_id: $str_id}}) "
                 "ON CREATE SET n += $props, n.aliases = [$alias] "
                 "ON MATCH SET n.aliases = "
                 "  [x IN COALESCE(n.aliases, []) WHERE x <> $alias] + [$alias] "
@@ -102,7 +115,7 @@ class Neo4jConnector(AbstractGraphDatabaseConnection):
             return query, {"str_id": node.id, "props": props, "alias": alias}
         else:
             query = (
-                f"MERGE (n:{node.type.value} {{str_id: $str_id}}) "
+                f"MERGE (n:{node_label} {{str_id: $str_id}}) "
                 "ON CREATE SET n += $props "
                 "RETURN elementId(n) as node_id"
             )
@@ -119,9 +132,10 @@ class Neo4jConnector(AbstractGraphDatabaseConnection):
         if quadruplet.time:
             rel_props['time_node_id'] = quadruplet.time.id
 
-        subj_t = quadruplet.start_node.type.value
-        obj_t = quadruplet.end_node.type.value
-        rel_t = quadruplet.relation.type.value
+        # 3.3: validate labels before interpolating into Cypher
+        subj_t = self._validate_label(quadruplet.start_node.type.value)
+        obj_t = self._validate_label(quadruplet.end_node.type.value)
+        rel_t = self._validate_label(quadruplet.relation.type.value)
 
         query = (
             f"MATCH (subj:{subj_t}), (obj:{obj_t}) "
