@@ -20,12 +20,12 @@ Ready-to-production система вопросно-ответного поис�
 
 Репозиторий организован вокруг современного конвейера V3:
 
-* **`bot.py`** — Главная точка входа. Инициализирует асинхронный Telegram-бот (aiogram) и регистрирует обработчики команд (`/ask`, `/facts`, `/graph`).
-* **`src/bot/engine_loader.py`** — Singleton-фабрика, отвечающая за инстанцирование движка. Направляет инициализацию в production-окружение (Neo4j+ChromaDB) или выполняет graceful-деградацию до in-memory движка на основе конфигурации `.env`.
-* **`src/pipelines/qa/qa_engine.py`** — Класс-оркестратор (`QAEngine`). Агрегирует 7 стадий QA-конвейера.
-* **`src/kg_model/knowledge_graph_model.py`** — Единый контроллер баз данных, абстрагирующий операции для драйверов Neo4j и ChromaDB.
-* **`src/pipelines/ingestion/temporal_kg_ingester.py`** — Модуль загрузки данных, обрабатывающий разрешение сущностей и синхронизацию баз данных.
-* **`src/bot/graph_renderer.py`** — Специализированный рендерер для генерации подграфов в виде изображений с помощью NetworkX и Matplotlib.
+* **[`bot.py`](bot.py)** — Главная точка входа. Инициализирует асинхронный Telegram-бот (aiogram) и регистрирует обработчики команд (`/ask`, `/facts`, `/graph`).
+* **[`src/bot/engine_loader.py`](src/bot/engine_loader.py)** — Singleton-фабрика, отвечающая за инстанцирование движка. Направляет инициализацию в production-окружение (Neo4j+ChromaDB) или выполняет graceful-деградацию до in-memory движка на основе конфигурации `.env`.
+* **[`src/pipelines/qa/qa_engine.py`](src/pipelines/qa/qa_engine.py)** — Класс-оркестратор (`QAEngine`). Агрегирует 7 стадий QA-конвейера.
+* **[`src/kg_model/knowledge_graph_model.py`](src/kg_model/knowledge_graph_model.py)** — Единый контроллер баз данных, абстрагирующий операции для драйверов Neo4j и ChromaDB.
+* **[`src/pipelines/ingestion/temporal_kg_ingester.py`](src/pipelines/ingestion/temporal_kg_ingester.py)** — Модуль загрузки данных, обрабатывающий разрешение сущностей и синхронизацию баз данных.
+* **[`src/bot/graph_renderer.py`](src/bot/graph_renderer.py)** — Специализированный рендерер для генерации подграфов в виде изображений с помощью NetworkX и Matplotlib.
 
 ---
 

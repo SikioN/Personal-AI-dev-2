@@ -69,6 +69,8 @@ docs/log
 
 # --- Legacy entry points ---
 app.py
+job.yaml
+
 
 # --- One-off scripts (root level) ---
 add_hybrid_to_notebook.py
