@@ -71,6 +71,12 @@ docs/log
 app.py
 job.yaml
 
+# --- Standalone extraction tool ---
+extract/
+
+# --- KuzuDB persistent storage ---
+data/kuzu_db/
+
 
 # --- One-off scripts (root level) ---
 add_hybrid_to_notebook.py

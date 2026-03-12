@@ -1,1 +1,0 @@
-E2NMATCHER_MAIN_LOG_PATH = "log/qa/kg_reasoner/medium/entities2nodes_matching/main"
