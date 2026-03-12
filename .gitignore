@@ -5,6 +5,8 @@ __pycache__/
 *.pyc
 *.pyo
 pai_venv/
+venv/
+.venv/
 .dvc/
 .dvcignore
 
@@ -28,6 +30,7 @@ output.png
 # --- Logs ---
 *.log
 logs/
+log/
 custom_logs/
 ingestion_log/
 ingestion_full_log/
@@ -49,14 +52,6 @@ archives/
 # --- Experiments ---
 experiments/
 
-# --- Specific Experiments Artifacts ---
-experiments/**/results/
-experiments/**/log/
-experiments/**/answer_packs/
-experiments/**/judges_packs/
-experiments/**/metric_packs/
-experiments/legacy/
-
 # --- Documentation Builds ---
 docs/_build
 docs/build
@@ -74,6 +69,14 @@ docs/log
 
 # --- Legacy entry points ---
 app.py
+job.yaml
+
+# --- Standalone extraction tool ---
+extract/
+
+# --- KuzuDB persistent storage ---
+data/kuzu_db/
+
 
 # --- One-off scripts (root level) ---
 add_hybrid_to_notebook.py
@@ -130,3 +133,6 @@ notebooks/debug_ask.py
 .vscode/
 .idea/
 .claude/
+
+# --- Tests ---
+tests/volumes

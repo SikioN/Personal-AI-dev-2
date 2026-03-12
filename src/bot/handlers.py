@@ -2,6 +2,8 @@
 import asyncio
 import logging
 import os
+import time
+from typing import Optional
 from aiogram import Router, F
 from aiogram.filters import Command, CommandStart
 from aiogram.types import Message, BufferedInputFile
@@ -17,6 +19,21 @@ router = Router()
 
 # Per-chat settings (in-memory; reset on bot restart)
 _chat_settings: dict[int, dict] = {}
+
+# 5.4: per-chat cooldown — prevents a single user from monopolising all semaphore slots
+_last_ask: dict[int, float] = {}
+_ASK_COOLDOWN_SEC = 5.0
+
+# 5.4: rate-limit — max 3 concurrent heavy-compute requests (ask/facts/graph)
+_ask_semaphore: Optional[asyncio.Semaphore] = None
+
+
+def _get_semaphore() -> asyncio.Semaphore:
+    global _ask_semaphore
+    if _ask_semaphore is None:
+        _ask_semaphore = asyncio.Semaphore(3)
+    return _ask_semaphore
+
 
 HELP_TEXT = (
     "*Personal\\-AI KG QA Navigator*\n\n"
@@ -81,8 +98,8 @@ async def cmd_status(message: Message):
         pass
 
     try:
-        # ChromaDB: attempt a lightweight count
-        kg_model.embeddings_model.nodes_db.count()
+        # 1.2: wrap synchronous ChromaDB I/O in asyncio.to_thread
+        await asyncio.to_thread(kg_model.embeddings_model.nodes_db.count)
         chroma_ok = True
     except Exception:
         pass
@@ -144,13 +161,27 @@ async def cmd_ask(message: Message):
         await message.answer("Использование: /ask <вопрос>")
         return
 
+    now = time.monotonic()
+    if now - _last_ask.get(message.chat.id, 0) < _ASK_COOLDOWN_SEC:
+        await message.answer("Слишком быстро. Подождите несколько секунд.")
+        return
+    _last_ask[message.chat.id] = now
+
     await message.answer("Анализирую граф, подождите...")
-    try:
-        engine, _, _ = await asyncio.to_thread(_get_engine_and_navigator)
-        answer = await asyncio.to_thread(engine.ask, query)
-    except Exception as e:
-        logger.exception("Error in /ask")
-        await message.answer(f"Ошибка: {_esc(str(e))}", parse_mode="MarkdownV2")
+    # 5.4: rate limiting
+    async with _get_semaphore():
+        try:
+            engine, _, _ = await asyncio.to_thread(_get_engine_and_navigator)
+            answer = await asyncio.to_thread(engine.ask, query)
+        except Exception as e:
+            logger.exception("Error in /ask")
+            await message.answer(f"Ошибка: {_esc(str(e))}", parse_mode="MarkdownV2")
+            return
+
+    # 5.1: check for None answer (LLM failure reported from GenerationStage)
+    if answer is None:
+        await message.answer("Произошла ошибка при обращении к LLM\\. Попробуйте позже\\.",
+                             parse_mode="MarkdownV2")
         return
 
     await message.answer(format_answer(answer), parse_mode="MarkdownV2")
@@ -163,15 +194,23 @@ async def cmd_facts(message: Message):
         await message.answer("Использование: /facts <вопрос>")
         return
 
+    now = time.monotonic()
+    if now - _last_ask.get(message.chat.id, 0) < _ASK_COOLDOWN_SEC:
+        await message.answer("Слишком быстро. Подождите несколько секунд.")
+        return
+    _last_ask[message.chat.id] = now
+
     s = _get_settings(message.chat.id)
     await message.answer("Ищу факты в графе...")
-    try:
-        engine, _, _ = await asyncio.to_thread(_get_engine_and_navigator)
-        results = await asyncio.to_thread(engine.get_ranked_results, query, s['top_k'])
-    except Exception as e:
-        logger.exception("Error in /facts")
-        await message.answer(f"Ошибка: {_esc(str(e))}", parse_mode="MarkdownV2")
-        return
+    # 5.4: rate limiting
+    async with _get_semaphore():
+        try:
+            engine, _, _ = await asyncio.to_thread(_get_engine_and_navigator)
+            results = await asyncio.to_thread(engine.get_ranked_results, query, s['top_k'])
+        except Exception as e:
+            logger.exception("Error in /facts")
+            await message.answer(f"Ошибка: {_esc(str(e))}", parse_mode="MarkdownV2")
+            return
 
     results = [r for r in results if r.get('confidence', 0) >= s['min_confidence']]
     text = format_facts(query, results, top_n=s['top_k'])
@@ -185,25 +224,41 @@ async def cmd_graph(message: Message):
         await message.answer("Использование: /graph <вопрос>")
         return
 
+    now = time.monotonic()
+    if now - _last_ask.get(message.chat.id, 0) < _ASK_COOLDOWN_SEC:
+        await message.answer("Слишком быстро. Подождите несколько секунд.")
+        return
+    _last_ask[message.chat.id] = now
+
     s = _get_settings(message.chat.id)
     await message.answer("Строю подграф...")
-    try:
-        engine, navigator, _ = await asyncio.to_thread(_get_engine_and_navigator)
-        results = await asyncio.to_thread(engine.get_ranked_results, query, s['top_k'])
-    except Exception as e:
-        logger.exception("Error fetching results for /graph")
-        await message.answer(f"Ошибка: {_esc(str(e))}", parse_mode="MarkdownV2")
-        return
+    # 5.4: rate limiting
+    async with _get_semaphore():
+        try:
+            engine, navigator, _ = await asyncio.to_thread(_get_engine_and_navigator)
+            results = await asyncio.to_thread(engine.get_ranked_results, query, s['top_k'])
+        except Exception as e:
+            logger.exception("Error fetching results for /graph")
+            await message.answer(f"Ошибка: {_esc(str(e))}", parse_mode="MarkdownV2")
+            return
 
     if not results:
         await message.answer("Нет результатов для построения графа.")
         return
 
-    seed_ids = list({
-        nid
-        for r in results
-        for nid in (r['quadruplet'].start_node.id, r['quadruplet'].end_node.id)
-    })
+    # results from QAEngine are List[Dict] with 'quadruplet' as Quadruplet object;
+    # from SimpleInMemoryEngine they are strings — skip node extraction gracefully
+    seed_ids = []
+    for r in results:
+        q = r.get('quadruplet')
+        if q and hasattr(q, 'start_node') and hasattr(q, 'end_node'):
+            seed_ids.append(q.start_node.id)
+            seed_ids.append(q.end_node.id)
+    seed_ids = list(set(seed_ids))
+
+    if not seed_ids or navigator is None:
+        await message.answer("Граф недоступен в текущем режиме\\.", parse_mode="MarkdownV2")
+        return
 
     try:
         quadruplets = await asyncio.to_thread(navigator.get_neighborhood, seed_ids, 1)

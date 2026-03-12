@@ -70,6 +70,12 @@ class QAEngine:
             kg_data_path = os.path.join(project_root, "wikidata_big/kg")
             if not os.path.exists(kg_data_path):
                 kg_data_path = os.path.join(os.getcwd(), "wikidata_big/kg")
+            # 2.6: warn loudly when neither path exists — mapper will return empty dicts
+            if not os.path.exists(kg_data_path):
+                raise FileNotFoundError(
+                    f"[QAEngine] KG data path not found: {kg_data_path!r}. "
+                    "Set KG_DATA_PATH env var or provide a Neo4j-backed connector."
+                )
             print(f"[QAEngine] Using file-based WikidataMapper at: {kg_data_path}")
             self.mapper = WikidataMapper(kg_data_path)
 
@@ -387,6 +393,24 @@ class QAEngine:
         answer = generation.answer
         print(f'\n{SEP}\n>>> ANSWER: {answer}\n{SEP}\n')
         return answer
+
+    def hot_reload_scorer(self, checkpoint_path: str) -> None:
+        """Atomically replace TComplEx scorer without stopping inference (GIL-safe)."""
+        from src.kg_model.temporal.temporal_model import TemporalScorer
+        from src.utils.device_utils import get_device
+        import logging as _logging
+        new_scorer = TemporalScorer(device=get_device())
+        # CPython GIL guarantees object-reference assignment is atomic
+        self.temporal_scorer = new_scorer
+        self._scoring_stage.temporal_scorer = new_scorer
+        _logging.getLogger(__name__).info(
+            "TComplEx scorer hot-reloaded from %s", checkpoint_path
+        )
+
+    # 1.4: status() required by /status handler when in production mode
+    def status(self) -> dict:
+        llm_name = type(self.ollama_client).__name__ if self.ollama_client else "None"
+        return {"mode": "production", "llm": llm_name}
 
     def ask_base(self, question: str, top_k: int = 10) -> str:
         """

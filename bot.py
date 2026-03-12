@@ -22,10 +22,16 @@ async def main():
     if not token:
         raise RuntimeError("TELEGRAM_BOT_TOKEN is not set. Check your .env file.")
 
+    # 5.5: validate token format before making any API calls
+    import re as _re
+    if not _re.match(r'^\d+:[A-Za-z0-9_-]{35,}$', token):
+        raise RuntimeError("TELEGRAM_BOT_TOKEN format is invalid (expected '<digits>:<35+ alphanum chars>').")
+
     logger.info("Initializing QA engine (this may take a minute)...")
     from src.bot.engine_loader import load_engine
     try:
-        load_engine()
+        # 1.3: heavy synchronous init (E5 encoding) must not block the event loop
+        await asyncio.to_thread(load_engine)
         logger.info("QA engine ready.")
     except Exception as e:
         logger.warning(f"Engine pre-load failed (will retry on first request): {e}")
