@@ -1,8 +1,7 @@
 # ==========================================
 # Core Data Science & ML
 # ==========================================
-# torch installed via CPU-only wheel in Dockerfile (Railway has no GPU)
-# torch>=2.0.0
+torch>=2.0.0
 numpy==1.26.4
 scipy
 pandas
