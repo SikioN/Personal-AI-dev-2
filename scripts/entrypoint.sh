@@ -56,8 +56,12 @@ if [[ -d "$KUZU_DIR" ]]; then
     echo "[entrypoint] Removing stale kuzu_db directory (KuzuDB requires a file path)..."
     rm -rf "$KUZU_DIR"
 fi
-# Validate existing KuzuDB file — delete if corrupted
+# Remove WAL file — Railway kills containers uncleanly, leaving a WAL that causes kuzu segfault
+rm -f "${KUZU_DIR}.wal" 2>/dev/null || true
+
+# Validate existing KuzuDB — detect Python-level corruption (not segfaults)
 if [[ -e "$KUZU_DIR" ]]; then
+    set +e
     python -c "
 import kuzu, sys
 try:
@@ -66,10 +70,14 @@ try:
     print('[entrypoint] KuzuDB OK.')
 except Exception as e:
     print(f'[entrypoint] KuzuDB corrupted ({e}), removing for rebuild...')
-    import os
-    os.remove('${KUZU_DIR}') if os.path.isfile('${KUZU_DIR}') else __import__('shutil').rmtree('${KUZU_DIR}')
     sys.exit(1)
-" || true
+"
+    KUZU_EXIT=$?
+    set -e
+    if [[ $KUZU_EXIT -ne 0 ]]; then
+        echo "[entrypoint] KuzuDB validation failed (exit $KUZU_EXIT), removing for rebuild..."
+        rm -f "${KUZU_DIR}" "${KUZU_DIR}.wal" 2>/dev/null || true
+    fi
 fi
 
 if [[ ! -e "$KUZU_DIR" ]]; then
