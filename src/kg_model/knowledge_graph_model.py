@@ -5,7 +5,11 @@ from dataclasses import dataclass, field
 
 from .graph_model import GraphModelConfig, GraphModel
 from .embeddings_model import EmbeddingsModelConfig, EmbeddingsModel
-from .nodestree_model import NodesTreeModelConfig, NodesTreeModel
+try:
+    from .nodestree_model import NodesTreeModelConfig, NodesTreeModel
+except ImportError:
+    NodesTreeModelConfig = None
+    NodesTreeModel = None
 from ..utils import Logger
 from ..utils.data_structs import Node, Quadruplet
 
