@@ -65,7 +65,8 @@ def main():
         os.path.join(ROOT_DIR, "data/graph_structures/vectorized_quadruplets/default"),
     ))
 
-    os.makedirs(kuzu_path, exist_ok=True)
+    # NOTE: KuzuDB >=0.6 expects a FILE path, NOT a directory — do not makedirs for kuzu_path
+    os.makedirs(os.path.dirname(kuzu_path), exist_ok=True)
     os.makedirs(nodes_path, exist_ok=True)
     os.makedirs(quads_path, exist_ok=True)
 
