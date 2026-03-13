@@ -180,13 +180,21 @@ class HybridRetriever:
             if not raw_results:
                 return [], {}
 
-            quads = []
-            scores = {}
-            for dist, quad in raw_results[0]:
-                # ip space: distance = 1 - inner_product; sim = 1 - distance
+            # Build t_id → score from ChromaDB results (vdb_inst is NOT a Quadruplet)
+            t_id_scores = {}
+            for dist, vdb_inst in raw_results[0]:
                 sim = max(0.0, min(1.0, 1.0 - float(dist)))
-                scores[quad.id] = sim
-                quads.append(quad)
+                t_id = (vdb_inst.metadata or {}).get('t_id')
+                if t_id:
+                    t_id_scores[t_id] = sim
+
+            if not t_id_scores:
+                return [], {}
+
+            # Fetch full Quadruplet objects from KuzuDB by t_id
+            db_conn = self.kg_model.graph_struct.db_conn
+            quads = db_conn.read(list(t_id_scores.keys()))
+            scores = {q.id: t_id_scores[q.id] for q in quads if q.id in t_id_scores}
             return quads, scores
         except Exception as e:
             print(f"WARNING: [HybridRetriever] Vector search failed: {e}")
