@@ -51,8 +51,9 @@ fi
 # 4. Build KuzuDB + ChromaDB (first run only — skipped if kuzu_db file already exists)
 # NOTE: KuzuDB expects a FILE path, not a directory — do NOT mkdir the kuzu path itself
 mkdir -p "$(dirname "$KUZU_DIR")"
-# Clean up stale empty directory if it was created by a previous broken run
-if [[ -d "$KUZU_DIR" && -z "$(ls -A "$KUZU_DIR" 2>/dev/null)" ]]; then
+# KuzuDB needs a FILE path. Remove stale directory if present (from previous broken runs)
+if [[ -d "$KUZU_DIR" ]]; then
+    echo "[entrypoint] Removing stale kuzu_db directory (KuzuDB requires a file path)..."
     rm -rf "$KUZU_DIR"
 fi
 if [[ ! -e "$KUZU_DIR" ]]; then
