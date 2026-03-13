@@ -1,0 +1,32 @@
+# systemd service unit for Personal AI Telegram Bot (KuzuDB / Mode B)
+#
+# Install:
+#   sudo cp scripts/deploy/personal-ai.service /etc/systemd/system/personal-ai.service
+#   # Edit User= and WorkingDirectory= / EnvironmentFile= paths below, then:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable personal-ai
+#   sudo systemctl start personal-ai
+#   sudo systemctl status personal-ai
+#   journalctl -u personal-ai -f
+
+[Unit]
+Description=Personal AI Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+# Change to your deploy username (e.g. ubuntu, deploy, etc.)
+User=ubuntu
+WorkingDirectory=/home/ubuntu/personal-ai
+EnvironmentFile=/home/ubuntu/personal-ai/.env
+# run_db.sh validates all preconditions (KuzuDB, ChromaDB, model, creds)
+# before handing off to python — use it as the ExecStart.
+ExecStart=/bin/bash /home/ubuntu/personal-ai/run_db.sh
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=personal-ai
+
+[Install]
+WantedBy=multi-user.target

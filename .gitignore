@@ -1,38 +1,152 @@
-#*.json
+# --- System & Environment ---
+.DS_Store
+.env
+__pycache__/
 *.pyc
-*.tar
-models/
+*.pyo
+pai_venv/
+venv/
+.venv/
+.dvc/
+.dvcignore
+
+# --- Data & Large Files ---
 data/
-debug/
 wikidata_big/
+processed_data/
+chroma_test_db/
+models/
+*.ckpt
+*.bin
+*.pt
+*.pkl
+*.pickle
+*.tar
+*.zip
+*.safetensors
+output.png
+*.pdf
 
-experiments/legacy
-experiments/qa_kg/legacy
+# --- Logs ---
+*.log
+logs/
+log/
+custom_logs/
+ingestion_log/
+ingestion_full_log/
+ingestion_neo4j_log/
+qa_subset_log/
+wandb/
+*_log/
 
-experiments/qa_kg/results/**/tmp_answer_packs/
-experiments/qa_kg/results/**/answer_packs/
-experiments/qa_kg/results/**/judges_packs/
-experiments/qa_kg/results/**/tmp_judges_packs/
-experiments/qa_kg/results/**/metric_packs/
-experiments/qa_kg/results/**/log/
-experiments/qa_kg/results/**/aeval_cron.txt
-experiments/qa_kg/**/qacron_log.txt
-experiments/qa_kg/results/**/agen_cron.txt
-experiments/qa_kg/results/**/llm_aeval_cron.txt
+# --- External Repos / Copies ---
+/CronKGQA/
+/kaggle_job/
 
-experiments/qa_kg/results/diaasq_legacy
-experiments/legacy
-experiments/qa_kg/legacy
+# --- Temporary / Scratch ---
+tmp/
+debug/
+archive/
+archives/
 
+# --- Experiments ---
 experiments/
 
-create_local_db/
-archives/
-__pycache__/
-pai_venv/
+# --- Documentation Builds ---
 docs/_build
 docs/build
 docs/log
-tmp/
+
+# --- Artifacts ---
+*.html
+*.txt
+*.csv
+
+# Exceptions
+!/requirements.txt
+!/requirements*.txt
+!/README.md
+
+# --- Legacy entry points ---
+app.py
+job.yaml
+
+# --- Standalone extraction tool ---
+extract/
+
+# --- KuzuDB persistent storage ---
+data/kuzu_db/
+
+
+# --- One-off scripts (root level) ---
+add_hybrid_to_notebook.py
+analyze_test_pickle.py
+check_presence.py
+create_benchmark_hybrid_notebook.py
+create_zip.py
+debug_chroma.py
+debug_pipeline.py
+fix_graph_memory.py
+fix_notebook.py
+fix_ollama_url.py
+fix_quadruplet_naming.py
+get_imports.py
+inspect_cronkgqa_test.py
+inspect_pickle.py
+inspect_simple_time.py
+inspect_triplet_structure.py
+inspect_vector_db.py
+inspect_vector_db_raw.py
+kaggle_train.py
+patch_notebook.py
+regenerate_notebook_v2.py
+rewrite_hybrid_benchmark.py
+rewrite_qa_notebook_yandex.py
+run_benchmark_comparison.py
+test_log.py
+test_pipeline_integration.py
+update_benchmark_logic.py
+update_datasphere_ask.py
+update_datasphere_ask_debug.py
+update_datasphere_ask_dynamic.py
+update_datasphere_ask_multihop.py
+validate_scorer_only.py
+validate_temporal_model.py
+verify_benchmark.py
+
+# --- One-off notebook scripts ---
+notebooks/inject_debug_cells.py
+notebooks/qa_v3_patch.py
+notebooks/qa_v3_patch_cell.py
+notebooks/nabokov_connections.py
+notebooks/explore_nabokov_kg.py
+notebooks/patch_ranking_display.py
+notebooks/debug_ask.py
+
+# --- All notebooks by default ---
+*.ipynb
+
+# --- Keep ONLY specific notebooks ---
+!/notebooks/qa_experiments_v3_improved.ipynb
+
+# --- IDEs & Tools ---
+.vscode/
+.idea/
+.claude/
+
+# --- Tests ---
 tests/volumes
-docs/build
+
+# --- Legacy / dead-code (not deleted, not tracked) ---
+src/agents/
+src/pipelines/memorize/
+src/db_drivers/kv_driver/
+src/db_drivers/tree_driver/
+src/kg_model/nodestree_model/
+src/personalai_main.py
+src/pipelines/qa/QAPipeline.py
+src/pipelines/qa/answers_aggregation/
+src/pipelines/qa/kg_reasoning/
+src/pipelines/qa/query_preprocessing/
+src/utils/cache_kv.py
+extract_data/

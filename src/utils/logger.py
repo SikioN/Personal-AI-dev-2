@@ -26,7 +26,10 @@ def init_logger(args, stdout_only=False):
 class Logger:
     def __init__(self, path):
         self.path = path
-        os.makedirs(path, exist_ok=True)
+        # Fix: If path is a file, create its directory. If directory, create it.
+        dir_path = os.path.dirname(path) if "." in os.path.basename(path) else path
+        if dir_path:
+            os.makedirs(dir_path, exist_ok=True)
 
     def __call__(self, text, filename = "log.txt", verbose = True, debug=True):
         if debug:

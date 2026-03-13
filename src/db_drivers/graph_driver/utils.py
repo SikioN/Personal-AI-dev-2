@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from abc import abstractmethod
 
 from ...utils import ReturnInfo
-from ...utils.data_structs import Triplet, NodeType, RelationType, Node
+from ...utils.data_structs import Quadruplet, NodeType, RelationType, Node
 from ..utils import AbstractDatabaseConnection, BaseDatabaseConfig
 
 @dataclass
@@ -14,7 +14,7 @@ class GraphDBConnectionConfig(BaseDatabaseConfig):
 class AbstractGraphDatabaseConnection(AbstractDatabaseConnection):
 
     @abstractmethod
-    def create(self, triplets: List[Triplet], creation_info: Dict = dict()) -> ReturnInfo:
+    def create(self, quadruplets: List[Quadruplet], creation_info: Dict = dict()) -> ReturnInfo:
         pass
 
     @abstractmethod
@@ -26,16 +26,16 @@ class AbstractGraphDatabaseConnection(AbstractDatabaseConnection):
         pass
 
     @abstractmethod
-    def get_triplets_by_name(self, subj_name: str, obj_name: str, obj_type) -> List[Triplet]:
+    def get_quadruplets_by_name(self, subj_name: str, obj_name: str, obj_type) -> List[Quadruplet]:
         pass
 
     @abstractmethod
-    def get_triplets(self, node1_id: str, node2_id: str) -> List[Triplet]:
+    def get_quadruplets(self, node1_id: str, node2_id: str) -> List[Quadruplet]:
         pass
 
     @abstractmethod
     def read_by_name(self, name: str, object_type: Union[RelationType,NodeType],
-                     object: str = 'triplet') -> List[Union[Triplet, Node]]:
+                     object: str = 'quadruplet') -> List[Union[Quadruplet, Node]]:
         pass
 
     @abstractmethod
@@ -47,5 +47,5 @@ class AbstractGraphDatabaseConnection(AbstractDatabaseConnection):
         pass
 
     @abstractmethod
-    def item_exist(self, id: str, id_type: str='triplet') -> bool:
+    def item_exist(self, id: str, id_type: str='quadruplet') -> bool:
         pass

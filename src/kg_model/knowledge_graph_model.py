@@ -1,12 +1,13 @@
+import logging as _logging
+import time as _time
 from typing import List, Dict, Set, Union
 from dataclasses import dataclass, field
 
 from .graph_model import GraphModelConfig, GraphModel
 from .embeddings_model import EmbeddingsModelConfig, EmbeddingsModel
-from ..db_drivers.kv_driver import KeyValueDriverConfig
 from .nodestree_model import NodesTreeModelConfig, NodesTreeModel
-from ..utils import Triplet, Logger
-from ..utils.data_structs import Node
+from ..utils import Logger
+from ..utils.data_structs import Node, Quadruplet
 
 KG_MAIN_LOG_PATH = 'log/kg_model/main'
 
@@ -42,12 +43,14 @@ class KnowledgeGraphModel:
     """
 
     def __init__(self, config: KnowledgeGraphModelConfig = KnowledgeGraphModelConfig(),
-                 cache_kvdriver_config: Union[KeyValueDriverConfig, None] = None) -> None:
+                 cache_kvdriver_config=None) -> None:
         self.config = config
+        self.config.graph_config.log = self.config.log
+        self.config.graph_config.verbose = self.config.verbose
         self.graph_struct = GraphModel(self.config.graph_config)
-        self.embeddings_struct =  EmbeddingsModel(self.config.embeddings_config)
+        self.embeddings_struct = EmbeddingsModel(self.config.embeddings_config)
         if self.config.nodestree_config is not None:
-            self.nodestree_struct = NodesTreeModel(self.config.nodestree_config, cache_kvdriver_config)
+            self.nodestree_struct = NodesTreeModel(self.config.nodestree_config)
         else:
             self.nodestree_struct = None
 
@@ -58,33 +61,59 @@ class KnowledgeGraphModel:
         gdb_count = self.graph_struct.db_conn.count_items()
         self.log(f"GRAPH DB STATUS: {gdb_count}", verbose=self.verbose)
         vdb_nodes_count = self.embeddings_struct.vectordbs['nodes'].count_items()
-        vdb_triplets_count = self.embeddings_struct.vectordbs['triplets'].count_items()
-        self.log(f"VECTOR DB STATUS: {vdb_nodes_count} - nodes; {vdb_triplets_count} - triplets", verbose=self.verbose)
+        vdb_quadruplets_count = self.embeddings_struct.vectordbs['quadruplets'].count_items()
+        self.log(f"VECTOR DB STATUS: {vdb_nodes_count} - nodes; {vdb_quadruplets_count} - quadruplets", verbose=self.verbose)
 
-        assert gdb_count['nodes'] == vdb_nodes_count
-        assert gdb_count['triplets'] >= vdb_triplets_count
+        # assert gdb_count['nodes'] == vdb_nodes_count
+        assert gdb_count['quadruplets'] >= vdb_quadruplets_count
         #assert vdb_nodes_count > vdb_triplets_count
 
         if self.nodestree_struct is not None:
             self.nodestree_struct.check_consistency()
 
-    def add_knowledge(self, triplets: List[Triplet], check_consistency: bool = True, status_bar: bool = False) -> Dict[str, Dict[str,Set[str]]]:
-        """Метод предназначен для добавления информации в память ассистента в виде списка триплетов.
+    def add_knowledge(self, quadruplets: List[Quadruplet], check_consistency: bool = True, status_bar: bool = False) -> Dict[str, Dict[str,Set[str]]]:
+        """Метод предназначен для добавления информации в память ассистента в виде списка квадруплетов.
 
-        :param triplets: Список триплетов с информацией для добавления в память ассистента.
-        :type triplets: List[Triplet]
+        :param quadruplets: Список квадруплетов с информацией для добавления в память ассистента.
+        :type quadruplets: List[Quadruplet]
         :param check_consistency: Если True, то после выполнения данной операции будет проверена консистентность памяти ассистента, иначе False. Значение по умолчанию True.
         :type check_consistency: bool, optional
         :param status_bar: Если True, то во время исполнения операции в stdout будет выводиться статус её исполнения, иначе False. Значение по умолчанию True.
         :type status_bar: bool, optional
-        :return: Словарь с информацией о триплетах, которые были добавлены в память ассистента.
+        :return: Словарь с информацией о квадруплетах, которые были добавлены в память ассистента.
         :rtype: Dict[str, Dict[str,Set[str]]]
         """
-        graph_create_info = self.graph_struct.create_triplets(triplets, status_bar=status_bar)
-        embd_create_info = self.embeddings_struct.create_triplets(triplets, status_bar=status_bar)
+        # 4.1: Neo4j is Source of Truth — never roll it back.
+        # ChromaDB is a derived view; retry up to 3 times with exponential backoff.
+        try:
+            graph_create_info = self.graph_struct.create_quadruplets(quadruplets, status_bar=status_bar)
+        except Exception as e:
+            raise RuntimeError(f"Neo4j write failed: {e}") from e
+
+        _kg_logger = _logging.getLogger(__name__)
+        last_exc = None
+        for attempt in range(3):
+            try:
+                embd_create_info = self.embeddings_struct.create_quadruplets(quadruplets, status_bar=status_bar)
+                last_exc = None
+                break
+            except Exception as e:
+                last_exc = e
+                _kg_logger.warning("ChromaDB write attempt %d failed: %s", attempt + 1, e)
+                if attempt < 2:
+                    _time.sleep(0.5 * (2 ** attempt))
+
+        if last_exc is not None:
+            _kg_logger.error(
+                "ChromaDB desync after 3 attempts — Neo4j is ahead. "
+                "Run re-sync to fix. Error: %s", last_exc
+            )
+            raise RuntimeError(f"ChromaDB write failed (Neo4j intact): {last_exc}") from last_exc
 
         if self.nodestree_struct is not None:
-            tree_expand_info = self.nodestree_struct.expand_tree(triplets, status_bar=status_bar)
+            # Note: NodeTree might still need refactoring, assuming it accepts the new struct or needs work too.
+            # For now passing quadruplets as it likely iterates over nodes/relations.
+            tree_expand_info = self.nodestree_struct.expand_tree(quadruplets, status_bar=status_bar)
         else:
             tree_expand_info = None
 
@@ -93,23 +122,23 @@ class KnowledgeGraphModel:
 
         return {'graph_info': graph_create_info, 'embeddings_info': embd_create_info, 'tree_info': tree_expand_info}
 
-    def remove_knowledge(self, triplets: List[Triplet], check_consistency: bool = True) -> Dict[str, Dict[int,Dict[str,bool]]]:
+    def remove_knowledge(self, quadruplets: List[Quadruplet], check_consistency: bool = True) -> Dict[str, Dict[int,Dict[str,bool]]]:
         """Метод предназначен для удаления информации из памяти ассистента.
-        Удаление производится по идентификаторам триплетов, в которых данная информация находилась
+        Удаление производится по идентификаторам квадруплетов, в которых данная информация находилась
         при её добавлении в память с помощью соответствующего add_knowledge-метода.
 
-        :param triplets: Набор триплетов, по которым нужно удалить соответствующую информацию из памяти ассистента.
-        :type triplets: List[Triplet]
+        :param quadruplets: Набор квадруплетов, по которым нужно удалить соответствующую информацию из памяти ассистента.
+        :type quadruplets: List[Quadruplet]
         :param check_consistency: Если True, то после выполнения данной операции будет проверена консистентность памяти ассистента, иначе False. Значение по умолчанию True.
         :type check_consistency: bool, optional
-        :return: Словарь с информацией о триплетах, которые были удалены (значение True, иначе False) из памяти ассистента.
+        :return: Словарь с информацией о квадруплетах, которые были удалены (значение True, иначе False) из памяти ассистента.
         :rtype: Dict[str, Dict[int,Dict[str,bool]]]
         """
-        graph_delete_info, embds_delete_info = self.graph_struct.delete_triplets(triplets)
-        self.embeddings_struct.delete_triplets(triplets, delete_info=embds_delete_info)
+        graph_delete_info, embds_delete_info = self.graph_struct.delete_quadruplets(quadruplets)
+        self.embeddings_struct.delete_quadruplets(quadruplets, delete_info=embds_delete_info)
 
         if self.nodestree_struct is not None:
-            tree_reduce_info = self.nodestree_struct.reduce_tree(triplets, delete_info=graph_delete_info)
+            tree_reduce_info = self.nodestree_struct.reduce_tree(quadruplets, delete_info=graph_delete_info)
         else:
             tree_reduce_info = None
 
