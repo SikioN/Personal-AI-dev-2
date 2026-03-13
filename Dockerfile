@@ -14,8 +14,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY src/ ./src/
 COPY bot.py .
 COPY scripts/ ./scripts/
+COPY setup.sh run_db.sh .env.example ./
 
-# models/ and wikidata_big/ are mounted as volumes — not baked into the image
+# models/ and wikidata_big/ are volume-mounted (or downloaded at runtime via entrypoint.sh)
 # to keep the image size manageable and allow model updates without rebuilds.
 
-CMD ["python", "bot.py"]
+CMD ["bash", "scripts/entrypoint.sh"]
