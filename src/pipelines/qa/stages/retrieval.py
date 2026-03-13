@@ -221,14 +221,17 @@ class HybridRetriever:
         scores = {}
         try:
             emb_struct = self.kg_model.embeddings_struct
-            if hasattr(emb_struct, 'read_embbeddings'):
-                quad_ids = [q.id for q in quads]
-                stored_embs = emb_struct.read_embbeddings('quadruplets', quad_ids)
-                for q, emb in zip(quads, stored_embs):
-                    if emb is not None:
-                        norm = np.linalg.norm(q_emb) * np.linalg.norm(emb) + 1e-9
-                        scores[q.id] = float(max(0.0, np.dot(q_emb, emb) / norm))
-                return scores
+            if hasattr(emb_struct, 'vectordbs') and 'quadruplets' in emb_struct.vectordbs:
+                rel_to_quad = {q.relation.id: q for q in quads}
+                instances = emb_struct.vectordbs['quadruplets'].read(
+                    list(rel_to_quad.keys()), includes=['embeddings', 'ids'])
+                for inst in instances:
+                    q = rel_to_quad.get(inst.id)
+                    if q is not None and inst.embedding is not None:
+                        norm = np.linalg.norm(q_emb) * np.linalg.norm(inst.embedding) + 1e-9
+                        scores[q.id] = float(max(0.0, np.dot(q_emb, np.array(inst.embedding)) / norm))
+                if scores:
+                    return scores
         except Exception:
             pass
 
@@ -261,14 +264,16 @@ class HybridRetriever:
             query_vec = embedder.encode_queries(['query: ' + anchor_event])[0]
 
             emb_struct = self.kg_model.embeddings_struct
-            if hasattr(emb_struct, 'read_embbeddings'):
-                quad_ids = [q.id for q in hop_quads]
-                stored_embs = emb_struct.read_embbeddings('quadruplets', quad_ids)
+            if hasattr(emb_struct, 'vectordbs') and 'quadruplets' in emb_struct.vectordbs:
+                rel_to_quad = {q.relation.id: q for q in hop_quads}
+                instances = emb_struct.vectordbs['quadruplets'].read(
+                    list(rel_to_quad.keys()), includes=['embeddings', 'ids'])
                 ranked = []
-                for q, emb in zip(hop_quads, stored_embs):
-                    if emb is not None:
-                        norm = np.linalg.norm(query_vec) * np.linalg.norm(emb) + 1e-9
-                        sim = float(np.dot(query_vec, emb) / norm)
+                for inst in instances:
+                    q = rel_to_quad.get(inst.id)
+                    if q is not None and inst.embedding is not None:
+                        norm = np.linalg.norm(query_vec) * np.linalg.norm(inst.embedding) + 1e-9
+                        sim = float(np.dot(query_vec, np.array(inst.embedding)) / norm)
                         ranked.append((sim, q))
                 ranked.sort(key=lambda x: x[0], reverse=True)
                 top_quads = [q for _, q in ranked[:15]]
