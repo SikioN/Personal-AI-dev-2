@@ -1,7 +1,8 @@
 # ==========================================
 # Core Data Science & ML
 # ==========================================
-torch>=2.0.0
+# torch installed separately in Dockerfile with CPU-only wheel (saves ~1.5 GB image size)
+# torch>=2.0.0
 numpy==1.26.4
 scipy
 pandas
