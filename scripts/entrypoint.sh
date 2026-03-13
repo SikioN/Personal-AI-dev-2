@@ -48,9 +48,14 @@ print('[entrypoint] TComplEx downloaded.')
 "
 fi
 
-# 4. Build KuzuDB + ChromaDB (first run only — skipped if kuzu_db not empty)
-mkdir -p "$KUZU_DIR"
-if [[ -z "$(ls -A "$KUZU_DIR" 2>/dev/null)" ]]; then
+# 4. Build KuzuDB + ChromaDB (first run only — skipped if kuzu_db file already exists)
+# NOTE: KuzuDB expects a FILE path, not a directory — do NOT mkdir the kuzu path itself
+mkdir -p "$(dirname "$KUZU_DIR")"
+# Clean up stale empty directory if it was created by a previous broken run
+if [[ -d "$KUZU_DIR" && -z "$(ls -A "$KUZU_DIR" 2>/dev/null)" ]]; then
+    rm -rf "$KUZU_DIR"
+fi
+if [[ ! -e "$KUZU_DIR" ]]; then
     echo "[entrypoint] Building KuzuDB + ChromaDB (first run, ~10-15 min)..."
     python scripts/build_kg.py
     echo "[entrypoint] Build complete."
