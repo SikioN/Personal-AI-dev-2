@@ -5,3 +5,4 @@ builder = "dockerfile"
 startCommand = "bash scripts/entrypoint.sh"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
+healthcheckTimeout = 7200
