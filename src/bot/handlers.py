@@ -104,13 +104,14 @@ async def cmd_status(message: Message):
     except Exception:
         pass
     ingested = e_status.get("ingested_facts", 0)
+    graph_backend = os.environ.get("GRAPH_BACKEND", "neo4j")
 
     if kg_model is None:
         # In-memory mode — Neo4j/ChromaDB deliberately not used
         nodes = e_status.get("nodes", 0)
         quads = e_status.get("quadruplets", len(getattr(engine, "raw_quads", [])))
         tcomplex_ok = e_status.get("tcomplex_loaded")
-        text = format_status(None, None, llm_backend, device, nodes, quads, ingested, "in-memory", tcomplex_ok)
+        text = format_status(None, None, llm_backend, device, nodes, quads, ingested, "in-memory", tcomplex_ok, graph_backend)
     else:
         neo4j_ok = False
         chroma_ok = False
@@ -129,7 +130,7 @@ async def cmd_status(message: Message):
         except Exception:
             pass
         tcomplex_ok = e_status.get("tcomplex_loaded")
-        text = format_status(neo4j_ok, chroma_ok, llm_backend, device, nodes, quads, ingested, "production", tcomplex_ok)
+        text = format_status(neo4j_ok, chroma_ok, llm_backend, device, nodes, quads, ingested, "production", tcomplex_ok, graph_backend)
 
     await message.answer(text, parse_mode="MarkdownV2")
 

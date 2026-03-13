@@ -58,11 +58,15 @@ from typing import List, Dict, Optional
 def format_status(neo4j_ok: Optional[bool], chroma_ok: Optional[bool], llm_backend: str,
                   device: str, nodes: int, quads: int,
                   ingested: int = 0, mode: str = "production",
-                  tcomplex_ok: Optional[bool] = None) -> str:
+                  tcomplex_ok: Optional[bool] = None,
+                  graph_backend: str = "neo4j") -> str:
     neo4j_icon  = "[OK]"  if neo4j_ok  is True  else ("[ERR]" if neo4j_ok  is False else "[N/A]")
     chroma_icon = "[OK]"  if chroma_ok is True  else ("[ERR]" if chroma_ok is False else "[N/A]")
     tc_icon     = "[OK]"  if tcomplex_ok is True else ("[ERR]" if tcomplex_ok is False else "[N/A]")
-    neo4j_label  = "Neo4j \\(N/A\\)" if neo4j_ok  is None else "Neo4j"
+    if graph_backend == "kuzu":
+        neo4j_label = "KuzuDB \\(N/A\\)" if neo4j_ok is None else "KuzuDB"
+    else:
+        neo4j_label = "Neo4j \\(N/A\\)" if neo4j_ok is None else "Neo4j"
     chroma_label = "ChromaDB \\(N/A\\)" if chroma_ok is None else "ChromaDB"
     tc_label     = "TComplEx \\(N/A\\)" if tcomplex_ok is None else "TComplEx"
     ingested_line = f"\nIngested: `{ingested}`" if ingested > 0 else ""
