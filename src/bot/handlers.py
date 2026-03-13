@@ -125,7 +125,7 @@ async def cmd_status(message: Message):
         except Exception:
             pass
         try:
-            await asyncio.to_thread(kg_model.embeddings_model.nodes_db.count)
+            await asyncio.to_thread(kg_model.embeddings_struct.vectordbs['nodes'].count_items)
             chroma_ok = True
         except Exception:
             pass

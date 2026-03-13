@@ -118,12 +118,37 @@ def main():
     logger.info("Initializing KnowledgeGraphModel (KuzuDB + ChromaDB)...")
     kg_model = KnowledgeGraphModel(kg_model_cfg)
 
-    # Check if already populated
+    # ── Idempotency check ─────────────────────────────────────────────────────
     db_conn = kg_model.graph_struct.db_conn
-    counts = db_conn.count_items()
-    existing = counts.get("quadruplets", 0)
-    if existing > 0 and not args.force:
-        logger.info(f"KuzuDB already has {existing:,} quadruplets. Use --force to rebuild.")
+    kuzu_count = db_conn.count_items().get("quadruplets", 0)
+    chroma_count = kg_model.embeddings_struct.count_items().get("quadruplets", 0)
+
+    logger.info(f"Current state: KuzuDB={kuzu_count:,} quads, ChromaDB={chroma_count:,} quads")
+
+    # Pollution detection: source file has ~328k — anything > 400k is duplicates
+    KUZU_EXPECTED_MAX = 400_000
+    if kuzu_count > KUZU_EXPECTED_MAX:
+        if args.force:
+            logger.warning(f"KuzuDB polluted ({kuzu_count:,} quads). Clearing for clean rebuild...")
+            db_conn.clear()
+            kg_model.embeddings_struct.clear()
+            kuzu_count = 0
+            chroma_count = 0
+        else:
+            logger.warning(
+                f"KuzuDB looks polluted ({kuzu_count:,} quads, expected ~328k). "
+                f"Run with --force to wipe and rebuild cleanly."
+            )
+
+    if kuzu_count > 0 and chroma_count > 0 and not args.force:
+        logger.info("Both KuzuDB and ChromaDB are populated. Nothing to do.")
+        return
+
+    need_kuzu = kuzu_count == 0
+    need_chroma = chroma_count == 0
+
+    if not need_kuzu and not need_chroma:
+        logger.info("Both stores already populated. Use --force to rebuild.")
         return
 
     # ── Load data ─────────────────────────────────────────────────────────────
@@ -140,12 +165,19 @@ def main():
         logger.error("No quadruplets loaded. Check full.txt format.")
         sys.exit(1)
 
-    # ── Batch insert into KuzuDB ──────────────────────────────────────────────
+    # ── Batch insert into KuzuDB + collect all quad_objs for ChromaDB ─────────
     from src.utils.data_structs import NodeCreator, RelationCreator, QuadrupletCreator
 
     BATCH = 1000
     total = len(raw_quads)
-    logger.info(f"Inserting {total:,} quadruplets into KuzuDB (batch={BATCH})...")
+    action = []
+    if need_kuzu:
+        action.append("KuzuDB")
+    if need_chroma:
+        action.append("ChromaDB")
+    logger.info(f"Building: {' + '.join(action)} ({total:,} quadruplets, batch={BATCH})...")
+
+    all_quad_objs = []
 
     for start in range(0, total, BATCH):
         batch = raw_quads[start : start + BATCH]
@@ -168,14 +200,26 @@ def main():
                 quad_objs.append(q)
 
         if quad_objs:
-            db_conn.create(quad_objs)
+            if need_kuzu:
+                db_conn.create(quad_objs)
+            if need_chroma:
+                all_quad_objs.extend(quad_objs)
 
         if (start // BATCH) % 20 == 0:
             done = min(start + BATCH, total)
             logger.info(f"  {done:,}/{total:,} ({100 * done // total}%)")
 
-    final_counts = db_conn.count_items()
-    logger.info(f"KuzuDB populated: {final_counts}")
+    if need_kuzu:
+        final_counts = db_conn.count_items()
+        logger.info(f"KuzuDB populated: {final_counts}")
+
+    # ── Populate ChromaDB ─────────────────────────────────────────────────────
+    if need_chroma:
+        logger.info(f"Embedding {len(all_quad_objs):,} quadruplets into ChromaDB (batch_size=128)...")
+        kg_model.embeddings_struct.create_quadruplets(all_quad_objs, batch_size=128)
+        chroma_final = kg_model.embeddings_struct.count_items()
+        logger.info(f"ChromaDB populated: {chroma_final}")
+
     logger.info("Done. Run the bot with: bash run_db.sh")
 
 
