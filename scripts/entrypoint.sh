@@ -48,7 +48,7 @@ print('[entrypoint] TComplEx downloaded.')
 "
 fi
 
-# 4. Build KuzuDB + ChromaDB (first run only — skipped if kuzu_db file already exists)
+# 4. Build KuzuDB + ChromaDB (always run — build_kg.py is idempotent, skips if already populated)
 # NOTE: KuzuDB expects a FILE path, not a directory — do NOT mkdir the kuzu path itself
 mkdir -p "$(dirname "$KUZU_DIR")"
 # KuzuDB needs a FILE path. Remove stale directory if present (from previous broken runs)
@@ -80,11 +80,9 @@ except Exception as e:
     fi
 fi
 
-if [[ ! -e "$KUZU_DIR" ]]; then
-    echo "[entrypoint] Building KuzuDB + ChromaDB (first run or after corruption, ~10-15 min)..."
-    python scripts/build_kg.py
-    echo "[entrypoint] Build complete."
-fi
+echo "[entrypoint] Running build_kg.py (idempotent — skips if already populated)..."
+python scripts/build_kg.py
+echo "[entrypoint] Build complete (or skipped — already populated)."
 
 echo "[entrypoint] All checks passed. Starting bot..."
 exec python bot.py
