@@ -383,7 +383,8 @@ def _load_production_engine(config):
             if os.path.isabs(config.kuzu_path)
             else os.path.join(ROOT_DIR, config.kuzu_path)
         )
-        os.makedirs(kuzu_path, exist_ok=True)
+        # NOTE: KuzuDB >=0.6 expects a FILE path — do NOT makedirs the kuzu path itself
+        os.makedirs(os.path.dirname(kuzu_path), exist_ok=True)
         kuzu_cfg = GraphDBConnectionConfig(
             params=dict(DEFAULT_KUZU_CONFIG.params, path=kuzu_path)
         )
