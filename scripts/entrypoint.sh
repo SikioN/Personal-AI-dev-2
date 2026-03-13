@@ -1,8 +1,10 @@
 #!/bin/bash
 # entrypoint.sh — Railway/Docker entry point.
 # Downloads model + KG data from HF, builds KuzuDB on first run. Idempotent.
-set -e
+set -ex
 cd /app
+echo "[entrypoint] Starting. KG_DATA_PATH=${KG_DATA_PATH} KUZU_PATH=${KUZU_PATH}"
+ls /app/data 2>/dev/null || echo "[entrypoint] /app/data is empty or missing"
 
 KG_DIR="${KG_DATA_PATH:-/app/data/wikidata_big/kg}"
 MODEL_DIR="${FINETUNED_MODEL_PATH:-/app/data/models/wikidata_finetuned_remote/wikidata_finetuned}"
