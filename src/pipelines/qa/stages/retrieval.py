@@ -118,13 +118,20 @@ class HybridRetriever:
     # ------------------------------------------------------------------
 
     def _get_graph_candidates(self, wd_ids: List[str], names: List[str]) -> List[Quadruplet]:
-        """KGNavigator BFS — works via Neo4j Cypher (db_conn.get_adjecent_nids / get_quadruplets)."""
+        """KGNavigator BFS — supports KuzuDB, Neo4j, and InMemory connectors.
+
+        KuzuDB: get_adjecent_nids / get_quadruplets both accept str_id natively,
+        so QIDs are passed directly without a preliminary lookup.
+        Neo4j: execute_query resolves str_id → internal node.id first.
+        InMemory: strid_nodes_index maps str_id → internal integer ids.
+        """
         connector = self.kg_model.graph_struct.db_conn
         node_ids = []
 
         for mid in wd_ids:
             try:
                 if hasattr(connector, 'execute_query'):
+                    # Neo4j path: resolve str_id → internal node.id
                     raw = connector.execute_query(
                         'MATCH (n) WHERE n.str_id = $str_id RETURN n',
                         params={'str_id': mid}
@@ -133,8 +140,12 @@ class HybridRetriever:
                         for node in connector.parse_query_nodes_output(raw):
                             node_ids.append(node.id)
                 elif hasattr(connector, 'strid_nodes_index'):
+                    # InMemory path: dict lookup
                     internal = connector.strid_nodes_index.get(mid, [])
                     node_ids.extend(internal)
+                elif hasattr(connector, 'conn'):
+                    # KuzuDB path: get_adjecent_nids / get_quadruplets use str_id directly
+                    node_ids.append(mid)
             except Exception:
                 pass
 
