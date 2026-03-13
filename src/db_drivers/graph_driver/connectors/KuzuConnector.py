@@ -35,10 +35,10 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
         self.config = config
 
     def open_connection(self) -> ReturnInfo:
-        load_path = f"{self.config.params['path']}/{self.config.db_info['db']}"
+        load_path = self.config.params['path']
 
         if not os.path.exists(load_path):
-            print(f"warning: graph-dump '{load_path}' doesnt exists. creating empty graph-store")
+            print(f"warning: graph-dump '{load_path}' doesn't exist. creating empty graph-store")
 
         self.db = kuzu.Database(load_path, buffer_pool_size=self.config.params['buffer_pool_size'])
         self.conn = kuzu.Connection(self.db)
@@ -165,14 +165,14 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
                 raise ValueError
 
         for i, t_id in enumerate(ids):
-            # Deletion logic similar to Neo4j but adapted for Kuzu syntax if needed
-            # Kuzu supports DELETE rel
-            
-            output = self.conn.execute(f'MATCH (s_node)-[rel]->(e_node) WHERE rel.t_id = "{t_id}" RETURN s_node.str_id AS sn_id, e_node.str_id AS en_id;')
-            self.conn.execute(f'MATCH (s_node)-[rel]->(e_node) WHERE rel.t_id = "{t_id}" DELETE rel;')
-            
-            # Additional cleanup logic omitted for brevity in this refactor, assuming similar to Neo4j logic
-            pass
+            self.conn.execute(
+                'MATCH (s_node)-[rel]->(e_node) WHERE rel.t_id = $tid RETURN s_node.str_id AS sn_id, e_node.str_id AS en_id;',
+                {"tid": t_id}
+            )
+            self.conn.execute(
+                'MATCH (s_node)-[rel]->(e_node) WHERE rel.t_id = $tid DELETE rel;',
+                {"tid": t_id}
+            )
 
 
     def read_by_name(self, name: str, object_type: Union[RelationType, NodeType], object: str = 'relation') -> List[Union[Quadruplet, Node]]:
@@ -261,37 +261,110 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
         str_accepted_nodes = ''.join(list(map(lambda tpe: f':{tpe.value}', accepted_n_types)))
 
         raw_nodes = self.conn.execute(
-            f'MATCH (a)-[r]-(b{str_accepted_nodes}) WHERE a.str_id = "{base_node_id}" RETURN b;')
+            f'MATCH (a)-[r]-(b{str_accepted_nodes}) WHERE a.str_id = $bid RETURN b;',
+            {"bid": base_node_id}
+        )
         formated_nodes = [node['str_id'] for node in raw_nodes.get_as_df()['b']]
         return formated_nodes
 
-    def get_nodes_shared_ids(self, node1_id: str, node2_id: str, id_type: str = 'both') -> List[Dict[str,str]]:
-         # Similar to InMemory logic
-         return []
+    def get_nodes_shared_ids(self, node1_id: str, node2_id: str, id_type: str = 'both') -> List[Dict[str, str]]:
+        r1 = self.conn.execute(
+            "MATCH (a)-[r]-(b) WHERE a.str_id = $id RETURN b.str_id AS bid",
+            {"id": node1_id}
+        ).get_as_df()
+        r2 = self.conn.execute(
+            "MATCH (a)-[r]-(b) WHERE a.str_id = $id RETURN b.str_id AS bid",
+            {"id": node2_id}
+        ).get_as_df()
+        if r1.empty or r2.empty or 'bid' not in r1.columns:
+            return []
+        shared = set(r1['bid'].tolist()) & set(r2['bid'].tolist())
+        return [{"str_id": sid} for sid in shared]
 
     def get_quadruplets_by_name(self, subj_names: List[str], obj_names: List[str], obj_type: str) -> List[Quadruplet]:
-        formatted_quadruplets = []
-        # Logic...
-        return formatted_quadruplets
+        all_quads = []
+        rel_tables = list(self.config.params['table_type_map']['relations']['forward'].values())
+        rel_tables = list(dict.fromkeys(rel_tables))
+        for sn in subj_names:
+            for on in obj_names:
+                for rel_t in rel_tables:
+                    try:
+                        result = self.conn.execute(
+                            f"MATCH (n1)-[rel:{rel_t}]->(n2) WHERE n1.name = $sn AND n2.name = $on RETURN n1, rel, n2;",
+                            {"sn": sn, "on": on}
+                        )
+                        all_quads.extend(self.parse_query_quadruplets_output(result))
+                    except Exception:
+                        pass
+        return all_quads
 
     def get_quadruplets(self, node1_id: str, node2_id: str) -> List[Quadruplet]:
-        # Logic...
-        return []
+        all_quads = []
+        rel_tables = list(dict.fromkeys(
+            self.config.params['table_type_map']['relations']['forward'].values()
+        ))
+        for rel_t in rel_tables:
+            try:
+                result = self.conn.execute(
+                    f"MATCH (n1)-[rel:{rel_t}]->(n2) WHERE n1.str_id = $id1 AND n2.str_id = $id2 RETURN n1, rel, n2;",
+                    {"id1": node1_id, "id2": node2_id}
+                )
+                all_quads.extend(self.parse_query_quadruplets_output(result))
+            except Exception:
+                pass
+        return all_quads
 
     def get_node_type(self, id: str) -> NodeType:
-        # TODO
-        raise NotImplementedError
+        node_tables = self.config.params['table_type_map']['nodes']['forward']
+        for node_type_val, tbl in node_tables.items():
+            try:
+                result = self.conn.execute(
+                    f"MATCH (n:{tbl}) WHERE n.str_id = $id RETURN count(n) AS cnt;",
+                    {"id": id}
+                ).get_as_df()
+                if not result.empty and result['cnt'][0] > 0:
+                    return NodeType(node_type_val)
+            except Exception:
+                pass
+        return NodeType.object
         
 
     def count_items(self, id: str = None, id_type: str = None) -> Union[Dict[str,int], int]:
-        result = None
         if id_type is None:
-            n_output = self.conn.execute("MATCH (a) RETURN count(a) as n_count").get_as_df()['n_count'][0]
-            r_output = self.conn.execute("MATCH (a)-[rel]->(b) RETURN count(rel) as r_count").get_as_df()['r_count'][0]
-            result = {'quadruplets': int(r_output), 'nodes': int(n_output)}
-        return result
+            try:
+                node_tables = self.config.params.get('table_type_map', {}).get('nodes', {}).get('forward', {})
+                obj_tbl = node_tables.get('object', 'object')
+                n_df = self.conn.execute(f"MATCH (n:{obj_tbl}) RETURN count(n) as n_count").get_as_df()
+                n_count = int(n_df['n_count'][0])
+            except Exception:
+                n_count = 0
+            try:
+                r_df = self.conn.execute("MATCH (a)-[rel]->(b) RETURN count(rel) as r_count").get_as_df()
+                r_count = int(r_df['r_count'][0])
+            except Exception:
+                r_count = 0
+            return {'quadruplets': r_count, 'nodes': n_count}
+        return None
 
-    def item_exist(self, id: str, id_type: str='quadruplet') -> bool:
+    def item_exist(self, id: str, id_type: str = 'quadruplet') -> bool:
+        if id_type == 'quadruplet':
+            result = self.conn.execute(
+                "MATCH (n1)-[rel]->(n2) WHERE rel.t_id = $id RETURN count(rel) AS cnt;",
+                {"id": id}
+            ).get_as_df()
+            return not result.empty and int(result['cnt'][0]) > 0
+        if id_type == 'node':
+            node_tables = self.config.params['table_type_map']['nodes']['forward'].values()
+            for tbl in dict.fromkeys(node_tables):
+                try:
+                    r = self.conn.execute(
+                        f"MATCH (n:{tbl}) WHERE n.str_id = $id RETURN count(n) AS cnt;",
+                        {"id": id}
+                    ).get_as_df()
+                    if not r.empty and int(r['cnt'][0]) > 0:
+                        return True
+                except Exception:
+                    pass
         return False
         
     def clear(self) -> None:

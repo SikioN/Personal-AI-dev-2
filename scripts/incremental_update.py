@@ -135,34 +135,62 @@ def main() -> None:
     from src.db_drivers.vector_driver.embedders import EmbedderModelConfig
 
     config = QAConfig.from_env()
+    ROOT = str(Path(__file__).parent.parent)
 
-    graph_driver_cfg = GraphDriverConfig(
-        db_vendor='neo4j',
-        db_config={
-            'host': config.neo4j_host,
-            'port': config.neo4j_port,
-            'user': config.neo4j_user,
-            'pwd': config.neo4j_password,
-            'db': config.neo4j_db,
-        }
+    # ChromaDB — file-mode paths from config (CHROMA_NODES_PATH / CHROMA_QUADS_PATH env vars)
+    nodes_path = (
+        config.chroma_nodes_path
+        if os.path.isabs(config.chroma_nodes_path)
+        else os.path.join(ROOT, config.chroma_nodes_path)
+    )
+    quads_path = (
+        config.chroma_quads_path
+        if os.path.isabs(config.chroma_quads_path)
+        else os.path.join(ROOT, config.chroma_quads_path)
     )
     nodes_cfg = VectorDriverConfig(
         db_vendor='chroma',
         db_config=VectorDBConnectionConfig(
-            conn={'host': config.chroma_host, 'port': config.chroma_port},
+            conn={'path': nodes_path},
             db_info={'db': 'default_db', 'table': 'personalaitable'}))
     quads_cfg = VectorDriverConfig(
         db_vendor='chroma',
         db_config=VectorDBConnectionConfig(
-            conn={'host': config.chroma_host, 'port': config.chroma_port},
-            db_info={'db': 'default_db', 'table': 'personalaitable_quads'}))
+            conn={'path': quads_path},
+            db_info={'db': 'default_db', 'table': 'personalaitable'}))
+
+    # Graph backend — controlled by GRAPH_BACKEND env var (mirrors engine_loader.py)
+    graph_backend = os.environ.get('GRAPH_BACKEND', 'neo4j').lower()
+    if graph_backend == 'kuzu':
+        from src.db_drivers.graph_driver.connectors.KuzuConnector import DEFAULT_KUZU_CONFIG
+        from src.db_drivers.graph_driver.utils import GraphDBConnectionConfig
+        kuzu_path = (
+            config.kuzu_path
+            if os.path.isabs(config.kuzu_path)
+            else os.path.join(ROOT, config.kuzu_path)
+        )
+        kuzu_cfg = GraphDBConnectionConfig(
+            params=dict(DEFAULT_KUZU_CONFIG.params, path=kuzu_path)
+        )
+        graph_driver_cfg = GraphDriverConfig(db_vendor='kuzu', db_config=kuzu_cfg)
+    else:
+        graph_driver_cfg = GraphDriverConfig(
+            db_vendor='neo4j',
+            db_config={
+                'host': config.neo4j_host,
+                'port': config.neo4j_port,
+                'user': config.neo4j_user,
+                'pwd': config.neo4j_password,
+                'db': config.neo4j_db,
+            }
+        )
 
     embedder_cfg = EmbedderModelConfig(model_name_or_path='intfloat/multilingual-e5-small')
     kg_model = KnowledgeGraphModel(KnowledgeGraphModelConfig(
         graph_config=GraphModelConfig(driver_config=graph_driver_cfg),
         embeddings_config=EmbeddingsModelConfig(
             nodesdb_driver_config=nodes_cfg,
-            tripletsdb_driver_config=quads_cfg,
+            quadrupletsdb_driver_config=quads_cfg,
             embedder_config=embedder_cfg,
         ),
     ))

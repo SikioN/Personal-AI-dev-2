@@ -136,3 +136,17 @@ notebooks/debug_ask.py
 
 # --- Tests ---
 tests/volumes
+
+# --- Legacy / dead-code (not deleted, not tracked) ---
+src/agents/
+src/pipelines/memorize/
+src/db_drivers/kv_driver/
+src/db_drivers/tree_driver/
+src/kg_model/nodestree_model/
+src/personalai_main.py
+src/pipelines/qa/QAPipeline.py
+src/pipelines/qa/answers_aggregation/
+src/pipelines/qa/kg_reasoning/
+src/pipelines/qa/query_preprocessing/
+src/utils/cache_kv.py
+extract_data/

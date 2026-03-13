@@ -38,7 +38,11 @@ def main() -> None:
         logger.error("tkbc-dir not found: %s", args.tkbc_dir)
         sys.exit(1)
 
-    checkpoint_out = args.checkpoint_out or os.path.join(args.tkbc_dir, "tcomplex_retrained.ckpt")
+    checkpoint_out = (
+        args.checkpoint_out
+        or os.environ.get("TCOMPLEX_CHECKPOINT")
+        or os.path.join(str(Path(__file__).parent.parent), "models/cronkgqa/tcomplex.ckpt")
+    )
 
     logger.info("Loading tkbc data from: %s", args.tkbc_dir)
     logger.info("  epochs=%d  batch_size=%d  lr=%.1e", args.epochs, args.batch_size, args.lr)

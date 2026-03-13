@@ -5,7 +5,6 @@ import os
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -38,7 +37,7 @@ async def main():
 
     from src.bot.handlers import router
 
-    bot = Bot(token=token, default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN_V2))
+    bot = Bot(token=token, default=DefaultBotProperties())
     dp = Dispatcher()
     dp.include_router(router)
 

@@ -5,9 +5,13 @@ from typing import Dict, Tuple
 # System prompt for anonymized Q-ID answer generation
 _ANON_SYS_DEFAULT = (
     "You are a pure logical reasoning engine. "
-    "FACT STRUCTURE: 'Subject_ID --[Relation_ID]--> Object_ID (Time: Range)'. "
-    "Identify the ID that represents the specific value asked for by the question. "
-    "Output ONLY the single ID (e.g. Q123 or P123). If the answer is not in the facts: output NULL."
+    "Answer ONLY based on the provided facts. "
+    "FACT STRUCTURE: 'Subject_ID --[Relation_ID]--> Object_ID (Time: Range)'\n"
+    "Rules:\n"
+    "- For entity questions: output ONLY the Q-ID or P-ID (e.g. Q123 or P456).\n"
+    "- For time/year questions: output ONLY the year or date range (e.g. 1925 or 1899 - 1917).\n"
+    "- Do NOT use external knowledge.\n"
+    "- If the answer is not in the facts: output NULL."
 )
 
 
@@ -28,6 +32,7 @@ class QAConfig:
     max_facts: int = 7
     search_k_floor: int = 15
     search_k_exp: float = 0.55
+    tcomplex_alpha: float = 0.5
 
     before_words: Tuple[str, ...] = (
         'before', 'prior to', 'earlier than', 'preceding', 'until', 'up to', 'by'
@@ -44,8 +49,11 @@ class QAConfig:
     neo4j_db: str = 'neo4j'
 
     # ChromaDB (external vector store)
-    chroma_nodes_path: str = 'data/graph_structures/vectorized_nodes/default_densedb'
-    chroma_quads_path: str = 'data/graph_structures/vectorized_quadruplets/default_densedb'
+    chroma_nodes_path: str = 'data/graph_structures/vectorized_nodes/default'
+    chroma_quads_path: str = 'data/graph_structures/vectorized_quadruplets/default'
+
+    # KuzuDB (embedded graph store)
+    kuzu_path: str = field(default_factory=lambda: os.environ.get("KUZU_PATH", "data/kuzu_db"))
 
     # Model paths
     finetuned_model_path: str = 'models/wikidata_finetuned_remote/wikidata_finetuned'
@@ -79,4 +87,12 @@ class QAConfig:
             cfg.tcomplex_threshold = float(os.environ['QA_TCOMPLEX_THRESHOLD'])
         if os.environ.get('FINETUNED_MODEL_PATH'):
             cfg.finetuned_model_path = os.environ['FINETUNED_MODEL_PATH']
+        if os.environ.get('KUZU_PATH'):
+            cfg.kuzu_path = os.environ['KUZU_PATH']
+        if os.environ.get('TCOMPLEX_CHECKPOINT'):
+            cfg.tcomplex_checkpoint = os.environ['TCOMPLEX_CHECKPOINT']
+        if os.environ.get('TCOMPLEX_DATA_PATH'):
+            cfg.tcomplex_data_path = os.environ['TCOMPLEX_DATA_PATH']
+        if os.environ.get('TCOMPLEX_ALPHA'):
+            cfg.tcomplex_alpha = float(os.environ['TCOMPLEX_ALPHA'])
         return cfg

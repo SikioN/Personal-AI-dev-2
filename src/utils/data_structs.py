@@ -3,7 +3,6 @@ from typing import List, Union, Tuple, Dict, Optional
 from enum import Enum
 import hashlib
 
-from src.db_drivers.vector_driver import VectorDBInstance
 
 class NodeType(Enum):
     """Доступные типы вершин."""
@@ -292,8 +291,8 @@ class QueryInfo:
     """
     query: str
     entities: List[str] = None
-    linked_nodes: List[VectorDBInstance] = None
-    linked_nodes_by_entities: List[VectorDBInstance] = None
+    linked_nodes: List = None
+    linked_nodes_by_entities: List = None
 
     def to_str(self):
         str_entities = ';'.join(sorted(self.entities)) if self.entities is not None else "None"

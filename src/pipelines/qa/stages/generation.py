@@ -93,11 +93,19 @@ class GenerationStage:
         anon_q = self._anonymize_question(question, retrieval.resolved_entities)
         ctx = self._build_anon_ctx(selected_quads)
 
+        answer_type = extraction.answer_type
+        q_type = extraction.q_type
+
+        if answer_type == 'year' or q_type == 'simple_time':
+            answer_hint = 'ANSWER (year or date range only, e.g. "1925" or "1899 - 1917"):'
+        else:
+            answer_hint = 'ANSWER (Q-ID only, e.g. Q123):'
+
         user_msg = (
             f"QUESTION: {anon_q}\n"
             f"TIME CONTEXT: {retrieval.resolved_time}\n"
             f"FACTS:\n{ctx}\n"
-            f"ANSWER (Q-ID only):"
+            f"{answer_hint}"
         )
 
         try:
@@ -112,10 +120,6 @@ class GenerationStage:
                 decoded_qid=None,
                 context_used=ctx,
             )
-
-        # answer_type-aware decoding
-        answer_type = extraction.answer_type
-        q_type = extraction.q_type
 
         if answer_type == 'year' or q_type == 'simple_time':
             year = self._extract_year(raw_ans)

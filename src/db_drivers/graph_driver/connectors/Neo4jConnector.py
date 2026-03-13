@@ -419,7 +419,7 @@ class Neo4jConnector(AbstractGraphDatabaseConnection):
 
     def count_items(self, id: str = None, id_type: str = None) -> Union[Dict[str, int], int]:
         if id_type is None:
-            n_raw = self.execute_query("MATCH (a) RETURN count(a) as n_count")
+            n_raw = self.execute_query("MATCH (n:object) RETURN count(n) as n_count")
             r_raw = self.execute_query("MATCH (a)-[rel]->(b) RETURN count(rel) as r_count")
             n_count = n_raw[0]['n_count'] if n_raw else 0
             r_count = r_raw[0]['r_count'] if r_raw else 0

@@ -114,28 +114,61 @@ class TemporalScorer:
         r_id = self.get_id(r_pid, 'relation')
         o_id = self.get_id(o_qid, 'entity')
         t_id = self.get_id(time, 'timestamp')
-        
+
         if any(x is None for x in [s_id, r_id, o_id, t_id]):
             # print(f"Missing mapping for {s_qid}, {r_pid}, {o_qid}, {time}")
             return -10.0 # Return low score for unknown entities
 
         # Prepare tensor: (batch_size, 4) -> (s, r, o, t)
         input_tensor = torch.tensor([[s_id, r_id, o_id, t_id]], device=self.device)
-        
+
         with torch.no_grad():
             score = self.model.forward(input_tensor)
             # TComplEx returns: (scores, regularizer, etc.) or just scores depending on method
             # Wait, tkbc_models.py TComplEx.forward returns tuple: (score, regularizer, time_emb)
             # But TComplEx.score(x) returns just score!
-            
+
             # Let's use score(x) method
             raw_score = self.model.score(input_tensor)
-            
+
             # Usually these scores are logits. We can apply sigmoid if we want 0-1 prob,
             # but for ranking, raw logits are fine. E5 uses cosine (0-1).
-            # To be compatible/comparable, maybe sigmoid is better? 
+            # To be compatible/comparable, maybe sigmoid is better?
             # Or just normalize.
             # In KG embeddings, higher is better.
-            
+
             return raw_score.item()
+
+    def finetune(self, train_data, epochs: int = 50, batch_size: int = 1000,
+                 lr: float = 1e-3) -> None:
+        """
+        Gradient descent loop on full train_data (numpy array of (s,r,o,t) ints).
+        Uses the regularizer loss from TComplEx.forward() as the training signal.
+        """
+        import numpy as np
+        self.model.train()
+        optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
+        data = torch.tensor(train_data, dtype=torch.long, device=self.device)
+        n = len(data)
+        for epoch in range(epochs):
+            perm = torch.randperm(n, device=self.device)
+            epoch_loss = 0.0
+            steps = 0
+            for i in range(0, n, batch_size):
+                batch = data[perm[i:i + batch_size]]
+                optimizer.zero_grad()
+                _, regularizer, _ = self.model.forward(batch)
+                loss = regularizer
+                loss.backward()
+                optimizer.step()
+                epoch_loss += loss.item()
+                steps += 1
+            if (epoch + 1) % 10 == 0:
+                print(f"  finetune epoch {epoch + 1}/{epochs}, loss={epoch_loss / max(steps, 1):.4f}")
+        self.model.eval()
+
+    def save(self, path: str) -> None:
+        """Save current model weights to checkpoint file."""
+        torch.save(self.model.state_dict(), path)
+        print(f"TemporalScorer checkpoint saved to {path}")
 

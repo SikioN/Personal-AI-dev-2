@@ -6,11 +6,11 @@ import io
 import textwrap
 import networkx as nx
 import matplotlib.pyplot as plt
-from typing import List
+from typing import List, Optional
 
 MAX_EDGES = 15  # Cap to keep graph readable and prevent overcrowding
 
-def render_subgraph(quadruplets: List) -> io.BytesIO:
+def render_subgraph(quadruplets: List, center_node: Optional[str] = None) -> io.BytesIO:
     """Convert quadruplets → NetworkX graph → PNG bytes using an advanced dark theme.
 
     Returns a BytesIO with the PNG image, seeked to position 0.
@@ -50,10 +50,14 @@ def render_subgraph(quadruplets: List) -> io.BytesIO:
     EDGE_TEXT_COLOR = "#8B949E"  # Muted edge text
 
     plt.figure(figsize=(14, 10), facecolor=BG_COLOR)
-    
-    # Layout (k=2.0 spaces nodes out more)
-    pos = nx.spring_layout(G, k=2.0, seed=42)
-    
+
+    # Layout — pin center_node at origin if provided
+    if center_node and center_node in G:
+        init_pos = {center_node: (0.0, 0.0)}
+        pos = nx.spring_layout(G, k=2.0, seed=42, pos=init_pos, fixed=[center_node])
+    else:
+        pos = nx.spring_layout(G, k=2.0, seed=42)
+
     # 1. Draw Edges with curved lines
     nx.draw_networkx_edges(
         G, pos, 
@@ -83,24 +87,25 @@ def render_subgraph(quadruplets: List) -> io.BytesIO:
     )
     
     # 3. Draw Nodes as pure text with bounding boxes (creating perfect capsules)
+    CENTER_BORDER = "#F0A500"  # Gold ring for the central node
     for node, (x, y) in pos.items():
         wrapped_name = "\n".join(textwrap.wrap(node, width=25))
-        
+        is_center = center_node and node == center_node
         plt.text(
-            x, y, 
+            x, y,
             wrapped_name,
             fontsize=11,
-            fontweight="medium",
+            fontweight="bold" if is_center else "medium",
             color=TEXT_COLOR,
-            ha='center', 
+            ha='center',
             va='center',
             family='sans-serif',
             bbox=dict(
                 boxstyle="round,pad=0.5",
                 facecolor=NODE_BG,
-                edgecolor=NODE_BORDER,
-                linewidth=1,
-                alpha=1.0
+                edgecolor=CENTER_BORDER if is_center else NODE_BORDER,
+                linewidth=2.5 if is_center else 1,
+                alpha=1.0,
             )
         )
 

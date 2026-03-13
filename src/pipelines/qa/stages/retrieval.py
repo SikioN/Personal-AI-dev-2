@@ -71,7 +71,10 @@ class HybridRetriever:
         # Level 2: fuzzy search
         cands = self.mapper.search_names(name, limit=10)
         if not cands and ' ' in name:
-            cands = self.mapper.search_names(name.split()[0], limit=10)
+            tokens = name.split()
+            cands = self.mapper.search_names(tokens[-1], limit=10)
+            if not cands:
+                cands = self.mapper.search_names(tokens[0], limit=10)
         if cands:
             if len(cands) == 1:
                 return cands[0], self.mapper.get_id(cands[0])

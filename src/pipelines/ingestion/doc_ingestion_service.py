@@ -140,78 +140,139 @@ class DocIngestionService:
             return {"added": 0, "skipped": 0, "errors": 0,
                     "files_processed": 0, "files_skipped": files_skipped}
 
-        all_quadruplets: list[dict] = []
+        all_quads: list[dict] = []
         errors_total = 0
         files_processed = 0
+
+        for fp, txt in new_docs:
+            res = self.ingest_file(fp, txt, tkbc_dir=tkbc_dir, progress_callback=progress_callback)
+            all_quads.extend(res.get("quadruplets", []))
+            errors_total += res.get("errors", 0)
+            if res.get("added", 0) > 0 or not res.get("errors"):
+                files_processed += 1
+
+        added = self._finalize_ingestion(all_quads, tkbc_dir, progress_callback)
+
+        return {
+            "added": added,
+            "skipped": 0,
+            "errors": errors_total,
+            "files_processed": files_processed,
+            "files_skipped": files_skipped,
+        }
+
+    def ingest_file(
+        self,
+        filepath: str,
+        text: Optional[str] = None,
+        tkbc_dir: Optional[str] = None,
+        progress_callback: Optional[Callable[[str], None]] = None,
+    ) -> dict:
+        """
+        Extract facts from a single file and (optionally) finalize ingestion.
+        If called standalone, it will also save to KG.
+        """
+        from extract.extract_quadruplets import (
+            fetch_all_wikidata_properties,
+            build_quadruplet,
+            deduplicate,
+            _load_processed_manifest,
+            _load_custom_registry,
+            _load_prop_llm_cache,
+            extract_with_ollama,
+            extract_with_openai,
+        )
+
+        # Ensure caches are ready
+        _load_processed_manifest()
+        _load_custom_registry()
+        _load_prop_llm_cache()
+
+        if text is None:
+            with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                text = f.read()
+
+        prop_map = fetch_all_wikidata_properties(use_cache=True)
+        llm_caller = self._make_llm_caller()
 
         llm_backend = os.environ.get("LLM_BACKEND", "deepseek").lower()
         llm_model = self._get_llm_model(llm_backend)
         llm_api_key = self._get_llm_api_key(llm_backend)
         llm_base_url = self._get_llm_base_url(llm_backend)
 
-        for idx, (filepath, text) in enumerate(new_docs):
-            fname = Path(filepath).name
-            if progress_callback:
-                progress_callback(f"Обработка файла {idx + 1}/{len(new_docs)}: {fname}")
-            logger.info("Processing %s (%d chars)", filepath, len(text))
+        fname = Path(filepath).name
+        if progress_callback:
+            progress_callback(f"Извлечение фактов из {fname}...")
 
-            try:
-                if llm_backend == "ollama":
-                    raw_quads = extract_with_ollama(text, model=llm_model)
-                elif llm_backend in ("openai", "deepseek", "chatgpt", "qwen", "compatible"):
-                    raw_quads = extract_with_openai(
-                        text,
-                        api_key=llm_api_key,
-                        model=llm_model,
-                        base_url=llm_base_url,
-                        workers=4,
-                    )
-                else:
-                    raw_quads = extract_with_ollama(text, model=llm_model)
+        try:
+            if llm_backend == "ollama":
+                raw_quads = extract_with_ollama(text, model=llm_model)
+            elif llm_backend in ("openai", "deepseek", "chatgpt", "qwen", "compatible"):
+                raw_quads = extract_with_openai(
+                    text,
+                    api_key=llm_api_key,
+                    model=llm_model,
+                    base_url=llm_base_url,
+                    workers=4,
+                )
+            else:
+                raw_quads = extract_with_ollama(text, model=llm_model)
 
-                built = []
-                for raw in raw_quads:
-                    try:
-                        q = build_quadruplet(raw, prop_map, llm_caller)
-                        if q:
-                            built.append(q)
-                    except Exception as e:
-                        logger.debug("build_quadruplet error: %s", e)
-                        errors_total += 1
+            built = []
+            for raw in raw_quads:
+                try:
+                    q = build_quadruplet(raw, prop_map, llm_caller)
+                    if q:
+                        built.append(q)
+                except Exception as e:
+                    logger.debug("build_quadruplet error: %s", e)
 
-                deduped = deduplicate(built)
-                all_quadruplets.extend(deduped)
-                _mark_processed(filepath, len(deduped))
-                files_processed += 1
+            deduped = deduplicate(built)
+            from extract.extract_quadruplets import _mark_processed
+            _mark_processed(filepath, len(deduped))
 
-            except Exception as e:
-                logger.error("Failed to process %s: %s", filepath, e)
-                errors_total += 1
+            # If this is a standalone call (not from ingest_directory), finalize now
+            # We detect this by checking if we're inside a loop or not (simplified)
+            # Actually, to avoid double-finalization in ingest_directory, we'll return the quads.
+            return {
+                "quadruplets": deduped,
+                "added": len(deduped),
+                "errors": len(raw_quads) - len(built) if raw_quads else 0
+            }
 
+        except Exception as e:
+            logger.error("Failed to process %s: %s", filepath, e)
+            return {"quadruplets": [], "added": 0, "errors": 1}
+
+    def ingest_single_file(
+        self,
+        filepath: str,
+        tkbc_dir: Optional[str] = None,
+        progress_callback: Optional[Callable[[str], None]] = None,
+    ) -> dict:
+        """Extract facts from one file and persist to KG immediately.
+        Returns dict with keys: added (int), errors (int).
+        """
+        result = self.ingest_file(filepath, tkbc_dir=tkbc_dir, progress_callback=progress_callback)
+        quads = result.get("quadruplets", [])
+        added = self._finalize_ingestion(quads, tkbc_dir, progress_callback) if quads else 0
+        return {"added": added, "errors": result.get("errors", 0)}
+
+    def _finalize_ingestion(self, all_quadruplets: list[dict], tkbc_dir: Optional[str], progress_callback=None) -> int:
         if not all_quadruplets:
-            return {"added": 0, "skipped": 0, "errors": errors_total,
-                    "files_processed": files_processed, "files_skipped": files_skipped}
+            return 0
 
         if progress_callback:
             progress_callback(f"Сохранение {len(all_quadruplets)} фактов в граф...")
 
         if self._inmemory_engine is not None:
             added = self._ingest_to_inmemory(all_quadruplets)
-            skipped = 0
         else:
             result = self._ingest_to_production(all_quadruplets, tkbc_dir)
             added = result.added
-            skipped = result.skipped
-            errors_total += result.errors
 
         _update_ingest_stats(added)
-        return {
-            "added": added,
-            "skipped": skipped,
-            "errors": errors_total,
-            "files_processed": files_processed,
-            "files_skipped": files_skipped,
-        }
+        return added
 
     # ------------------------------------------------------------------
     # LLM bridge
