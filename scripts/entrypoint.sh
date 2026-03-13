@@ -18,7 +18,7 @@ if [[ ! -f "$KG_DIR/full.txt" ]]; then
 from huggingface_hub import snapshot_download
 snapshot_download(
     repo_id='${HF_KG_DATA_REPO}', repo_type='dataset',
-    local_dir='${KG_DIR}', token='${HF_TOKEN:-}'
+    local_dir='${KG_DIR}', token='${HF_TOKEN:-}' or None
 )
 print('[entrypoint] KG data downloaded.')
 "
@@ -42,7 +42,7 @@ if [[ -n "${HF_TCOMPLEX_REPO:-}" && ! -f "$TCOMPLEX_CKPT" ]]; then
 from huggingface_hub import hf_hub_download
 hf_hub_download(
     repo_id='${HF_TCOMPLEX_REPO}', filename='tcomplex.ckpt',
-    local_dir='$(dirname "${TCOMPLEX_CKPT}")', token='${HF_TOKEN:-}'
+    local_dir='$(dirname "${TCOMPLEX_CKPT}")', token='${HF_TOKEN:-}' or None
 )
 print('[entrypoint] TComplEx downloaded.')
 "

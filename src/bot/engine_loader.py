@@ -408,7 +408,9 @@ def _load_production_engine(config):
             logger.warning(f"Neo4j unavailable ({type(e).__name__}), falling back to in-memory graph.")
             graph_driver_cfg = GraphDriverConfig(db_vendor='inmemory_graph')
 
-    embedder_cfg = EmbedderModelConfig(model_name_or_path='intfloat/multilingual-e5-small')
+    embedder_cfg = EmbedderModelConfig(
+        model_name_or_path=MODEL_PATH if os.path.exists(MODEL_PATH) else 'intfloat/multilingual-e5-small'
+    )
     emb_cfg = EmbeddingsModelConfig(
         nodesdb_driver_config=nodes_cfg,
         quadrupletsdb_driver_config=quads_cfg,
