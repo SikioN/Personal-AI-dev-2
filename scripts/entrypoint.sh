@@ -56,8 +56,24 @@ if [[ -d "$KUZU_DIR" ]]; then
     echo "[entrypoint] Removing stale kuzu_db directory (KuzuDB requires a file path)..."
     rm -rf "$KUZU_DIR"
 fi
+# Validate existing KuzuDB file — delete if corrupted
+if [[ -e "$KUZU_DIR" ]]; then
+    python -c "
+import kuzu, sys
+try:
+    db = kuzu.Database('${KUZU_DIR}')
+    del db
+    print('[entrypoint] KuzuDB OK.')
+except Exception as e:
+    print(f'[entrypoint] KuzuDB corrupted ({e}), removing for rebuild...')
+    import os
+    os.remove('${KUZU_DIR}') if os.path.isfile('${KUZU_DIR}') else __import__('shutil').rmtree('${KUZU_DIR}')
+    sys.exit(1)
+" || true
+fi
+
 if [[ ! -e "$KUZU_DIR" ]]; then
-    echo "[entrypoint] Building KuzuDB + ChromaDB (first run, ~10-15 min)..."
+    echo "[entrypoint] Building KuzuDB + ChromaDB (first run or after corruption, ~10-15 min)..."
     python scripts/build_kg.py
     echo "[entrypoint] Build complete."
 fi
