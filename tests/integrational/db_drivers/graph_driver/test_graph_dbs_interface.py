@@ -9,10 +9,10 @@ sys.path.insert(0, PROJECT_BASE_DIR)
 
 from cases import GRAPHDB_POPULATED_CREATE_TEST_CASES, GRAPHDB_POPULATED_DELETE_TEST_CASES, \
     GRAPHDB_POPULATED_READ_TEST_CASES, GRAPHDB_POPULATED_COUNT_TEST_CASES, GRAPHDB_POPULATED_EXIST_TEST_CASES, \
-    GRAPHDB_POPULATED_CLEAR_TEST_CASES, GRAPHDB_POPULATED_GET_TRIPLETS_TEST_CASES, GRAPHDB_POPULATED_GET_ADJECENT_TEST_CASES, \
+    GRAPHDB_POPULATED_CLEAR_TEST_CASES, GRAPHDB_POPULATED_GET_TRIPLETS_TEST_CASES, GRAPHDB_POPULATED_GET_ADJECENT_TEST_CASES as GRAPHDB_POPULATED_GET_ADJACENT_TEST_CASES, \
         GRAPHDB_POPULATED_READ_BY_NAME_TEST_CASES, GRAPHDB_POPULATED_GET_NSHARED_IDS_TEST_CASES
 
-from src.utils import Triplet, RelationType, NodeType
+from src.utils import Quadruplet as Triplet, RelationType, NodeType
 from src.utils.data_structs import Node
 from src.db_drivers.graph_driver.utils import AbstractGraphDatabaseConnection
 
@@ -110,13 +110,13 @@ def test_clear(instances, base_info, graphdb_conn):
     assert items_info['triplets'] == 0
     assert items_info['nodes'] == 0
 
-@pytest.mark.parametrize("instances, create_info, node, accepted_n_types, expected, graphdb_conn", GRAPHDB_POPULATED_GET_ADJECENT_TEST_CASES, indirect=['graphdb_conn'])
-def test_get_adjecent_nids(instances, create_info, node, accepted_n_types, expected, graphdb_conn):
+@pytest.mark.parametrize("instances, create_info, node, accepted_n_types, expected, graphdb_conn", GRAPHDB_POPULATED_GET_ADJACENT_TEST_CASES, indirect=['graphdb_conn'])
+def test_get_adjacent_nids(instances, create_info, node, accepted_n_types, expected, graphdb_conn):
     graphdb_conn.clear()
     graphdb_conn.create(instances, create_info)
 
     try:
-        output = graphdb_conn.get_adjecent_nids(node, accepted_n_types=accepted_n_types)
+        output = graphdb_conn.get_adjacent_nids(node, accepted_n_types=accepted_n_types)
     except ValueError as e:
         print(str(e))
         assert expected['exception']

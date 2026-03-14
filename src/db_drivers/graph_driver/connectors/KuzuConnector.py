@@ -68,54 +68,55 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
         # Simpler check
         return hasattr(self, 'conn')
 
-    def create_node_query(self, node: Node) -> str:
-        prop_keys, prop_values = [], []
-        for prop_name, prop_value in node.prop.items():
-            prop_keys.append(prop_name.replace(" ", "_"))
-            if isinstance(prop_value, str):
-                 prop_values.append(prop_value)
-            else:
-                 prop_values.append(json.dumps(prop_value, ensure_ascii=False))
-
-        fields = {}
-        fields['name'] = json.dumps(node.name, ensure_ascii=False)
-        fields['str_id'] = json.dumps(node.id, ensure_ascii=False)
-        # Construct map literal manually
-        map_str = "map([" + ",".join([f"'{k}'" for k in prop_keys]) + "], [" + ",".join([f"'{v}'" for v in prop_values]) + "])"
-        fields['prop'] = map_str
-
-        str_fields = ", ".join([f"{k}: {v}" for k, v in fields.items()])
-
+    def create_node_query(self, node: Node) -> tuple[str, dict]:
+        props = dict(node.prop)
+        props['name'] = node.name
+        props['str_id'] = node.id
+        
         node_t = self.config.params['table_type_map']['nodes']['forward'][node.type.value]
-        query = f"CREATE (n:{node_t} " + "{" + str_fields + "});"
-        return query
-
-
-    def create_rel_query(self, quadruplet: Quadruplet) -> str:
-        prop_keys, prop_values = [], []
-        for prop_name, prop_value in quadruplet.relation.prop.items():
-            prop_keys.append(prop_name.replace(' ', '_'))
-            if isinstance(prop_value, str):
-                 prop_values.append(prop_value)
-            else:
-                 prop_values.append(json.dumps(prop_value, ensure_ascii=False))
-
-        fields = {}
-        fields['name'] = json.dumps(quadruplet.relation.name, ensure_ascii=False)
-        fields['t_id'] = json.dumps(quadruplet.id, ensure_ascii=False)
-        fields['str_id'] = json.dumps(quadruplet.relation.id, ensure_ascii=False)
         
-        map_str = "map([" + ",".join([f"'{k}'" for k in prop_keys]) + "], [" + ",".join([f"'{v}'" for v in prop_values]) + "])"
-        fields['prop'] = map_str
-        
-        str_fields = ", ".join([f"{k}: {v}" for k, v in fields.items()])
+        # In Kuzu, MAP literals can take parameter values.
+        # Format: CREATE (n:LABEL {name: $name, str_id: $str_id, prop: $prop})
+        query = f"CREATE (n:{node_t} {{name: $name, str_id: $str_id, prop: $prop}});"
+        return query, {"name": node.name, "str_id": node.id, "prop": props}
 
-        subj_t, subj_id = quadruplet.start_node.type.value, quadruplet.start_node.id
-        obj_t, obj_id = quadruplet.end_node.type.value, quadruplet.end_node.id
-        rel_t = self.config.params['table_type_map']['relations']['forward'][quadruplet.relation.type.value]
-        query = f'MATCH (subj:{subj_t}), (obj:{obj_t}) WHERE subj.str_id = "{subj_id}" AND obj.str_id = "{obj_id}" '
-        query += f'CREATE (subj)-[rel:{rel_t} ' + '{' + str_fields + '}' + ']->(obj);'
-        return query
+
+    def create_rel_query(self, quadruplet: Quadruplet) -> tuple[str, dict]:
+        # Add time_name to properties for persistence
+        time_name = quadruplet.time.name if quadruplet.time else "Unknown"
+        
+        # Merge properties
+        combined_prop = dict(quadruplet.relation.prop)
+        combined_prop['time_name'] = time_name
+        
+        s_type = self.config.params['table_type_map']['nodes']['forward'][quadruplet.start_node.type.value]
+        o_type = self.config.params['table_type_map']['nodes']['forward'][quadruplet.end_node.type.value]
+        rel_type = self.config.params['table_type_map']['relations']['forward'][quadruplet.relation.type.value]
+
+        s_id = quadruplet.start_node.id
+        o_id = quadruplet.end_node.id
+        rel_name = quadruplet.relation.name
+        t_id = quadruplet.id
+        r_id = quadruplet.relation.id
+
+        # Kuzu supports parameterized variables. Use $var syntax.
+        query = (
+            f"MATCH (s:{s_type}), (o:{o_type}) "
+            f"WHERE s.str_id = $s_id AND o.str_id = $o_id "
+            f"CREATE (s)-[rel:{rel_type} {{ "
+            f"name: $rel_name, t_id: $t_id, str_id: $r_id, "
+            f"prop: $prop "
+            f"}}]->(o)"
+        )
+        params = {
+            "s_id": s_id,
+            "o_id": o_id,
+            "rel_name": rel_name,
+            "t_id": t_id,
+            "r_id": r_id,
+            "prop": combined_prop
+        }
+        return query, params
 
     def create(self, quadruplets: List[Quadruplet], creation_info: Dict[int,Dict[str,bool]] = dict()) -> ReturnInfo:
         # quadruplet-ids checking
@@ -129,29 +130,28 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
         for i, quadruplet in enumerate(quadruplets):
             cur_info = creation_info.get(i, None)
             if cur_info is None or cur_info['s_node']:
-                insert_subj_query = self.create_node_query(quadruplet.start_node)
-                self.conn.execute(insert_subj_query)
+                insert_subj_query, p = self.create_node_query(quadruplet.start_node)
+                self.conn.execute(insert_subj_query, p)
             if cur_info is None or cur_info['e_node']:
-                insert_obj_query = self.create_node_query(quadruplet.end_node)
-                self.conn.execute(insert_obj_query)
+                insert_obj_query, p = self.create_node_query(quadruplet.end_node)
+                self.conn.execute(insert_obj_query, p)
             
             # Time node
             if (cur_info is None or cur_info.get('t_node', False)) and quadruplet.time:
-                 insert_time_query = self.create_node_query(quadruplet.time)
-                 self.conn.execute(insert_time_query)
+                 insert_time_query, p = self.create_node_query(quadruplet.time)
+                 self.conn.execute(insert_time_query, p)
 
-            insert_rel_query = self.create_rel_query(quadruplet)
+            insert_rel_query, p = self.create_rel_query(quadruplet)
 
-            self.conn.execute(insert_rel_query)
+            self.conn.execute(insert_rel_query, p)
 
     def read(self, ids: List[str]) -> List[Quadruplet]:
         for t_id in ids:
             if type(t_id) is not str:
                 raise ValueError
 
-        str_ids = '['+', '.join(list(map(lambda id: f'"{id}"', ids))) + ']'
-        query = f"MATCH (n1)-[rel]->(n2) WHERE rel.t_id IN {str_ids} RETURN n1, rel, n2;"
-        raw_output = self.conn.execute(query)
+        query = "MATCH (n1)-[rel]->(n2) WHERE rel.t_id IN $ids RETURN n1, rel, n2;"
+        raw_output = self.conn.execute(query, {"ids": ids})
         quadruplets = self.parse_query_quadruplets_output(raw_output)
         return quadruplets
 
@@ -189,15 +189,15 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
         if object == 'relation':
             rel_t = self.config.params['table_type_map']['relations']['forward'][object_type.value]
 
-            query = f"MATCH (n1)-[rel:{rel_t}]->(n2) WHERE rel.name = {dump_name} RETURN n1,rel,n2;"
-            output = self.conn.execute(query)
+            query = f"MATCH (n1)-[rel:{rel_t}]->(n2) WHERE rel.name = $name RETURN n1,rel,n2;"
+            output = self.conn.execute(query, {"name": name})
 
             formated_output = self.parse_query_quadruplets_output(output)
         elif object == 'node':
             node_t = self.config.params['table_type_map']['nodes']['forward'][object_type.value]
 
-            query = f"MATCH (n:{node_t}) WHERE n.name = {dump_name} RETURN n;"
-            output = self.conn.execute(query)
+            query = f"MATCH (n:{node_t}) WHERE n.name = $name RETURN n;"
+            output = self.conn.execute(query, {"name": name})
 
             formated_output = self.parse_query_nodes_output(output)
         else:
@@ -246,14 +246,19 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
             
             # Create Quadruplet
             # Time node missing in return?
-            time_node = NodeCreator.create(NodeType.time, "Unknown", add_stringified_node=True)
-
+            # 1.3: Reconstruct time from properties if available
+            r_prop = dict(cur_rel.get('prop', {}))
+            time_name = r_prop.get('time_name', 'Unknown')
+            time_node = NodeCreator.create(NodeType.time, time_name, add_stringified_node=True)
+            
             quadruplet = QuadrupletCreator.create(
-                start_node, relation, end_node, time=time_node, add_stringified_quadruplet=False, t_id=cur_rel.get('t_id'))
+                start_node=start_node, relation=relation, end_node=end_node,
+                time=time_node, t_id=cur_rel.get('t_id')
+            )
             formated_quadruplets.append(quadruplet)
         return formated_quadruplets
 
-    def get_adjecent_nids(self, base_node_id: str,
+    def get_adjacent_nids(self, base_node_id: str,
             accepted_n_types: List[NodeType] = [NodeType.object, NodeType.hyper, NodeType.episodic]) -> List[str]:
         if type(base_node_id) is not str:
             raise ValueError

@@ -80,8 +80,19 @@ except Exception as e:
     fi
 fi
 
+# Ensure ChromaDB persistent directories exist (Railway volumes may be empty on first mount)
+CHROMA_NODES_DIR="${CHROMA_NODES_PATH:-/app/data/graph_structures/vectorized_nodes/default}"
+CHROMA_QUADS_DIR="${CHROMA_QUADS_PATH:-/app/data/graph_structures/vectorized_quadruplets/default}"
+mkdir -p "$CHROMA_NODES_DIR" "$CHROMA_QUADS_DIR"
+
+# Support BUILD_KG_FORCE=1 for manual clean rebuild (e.g. when KuzuDB is polluted)
+BUILD_KG_ARGS=""
+if [[ "${BUILD_KG_FORCE:-0}" == "1" ]]; then
+    echo "[entrypoint] BUILD_KG_FORCE=1 — forcing clean rebuild of KuzuDB + ChromaDB..."
+    BUILD_KG_ARGS="--force"
+fi
 echo "[entrypoint] Running build_kg.py (idempotent — skips if already populated)..."
-python scripts/build_kg.py
+python scripts/build_kg.py $BUILD_KG_ARGS
 echo "[entrypoint] Build complete (or skipped — already populated)."
 
 echo "[entrypoint] All checks passed. Starting bot..."

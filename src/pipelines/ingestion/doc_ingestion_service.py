@@ -100,19 +100,24 @@ class DocIngestionService:
         Returns:
             {added, skipped, errors, files_processed, files_skipped}
         """
-        from extract.extract_quadruplets import (
-            collect_documents,
-            fetch_all_wikidata_properties,
-            build_quadruplet,
-            deduplicate,
-            _load_processed_manifest,
-            _is_processed,
-            _mark_processed,
-            _load_custom_registry,
-            _load_prop_llm_cache,
-            extract_with_ollama,
-            extract_with_openai,
-        )
+        try:
+            from extract.extract_quadruplets import (
+                collect_documents,
+                fetch_all_wikidata_properties,
+                build_quadruplet,
+                deduplicate,
+                _load_processed_manifest,
+                _is_processed,
+                _mark_processed,
+                _load_custom_registry,
+                _load_prop_llm_cache,
+                extract_with_ollama,
+                extract_with_openai,
+            )
+        except ImportError:
+            raise RuntimeError(
+                "Module 'extract' not found. Please ensure the 'extract/' folder is in your PYTHONPATH."
+            )
 
         if not os.path.isdir(input_dir):
             logger.warning("Input dir not found: %s", input_dir)
@@ -172,16 +177,21 @@ class DocIngestionService:
         Extract facts from a single file and (optionally) finalize ingestion.
         If called standalone, it will also save to KG.
         """
-        from extract.extract_quadruplets import (
-            fetch_all_wikidata_properties,
-            build_quadruplet,
-            deduplicate,
-            _load_processed_manifest,
-            _load_custom_registry,
-            _load_prop_llm_cache,
-            extract_with_ollama,
-            extract_with_openai,
-        )
+        try:
+            from extract.extract_quadruplets import (
+                fetch_all_wikidata_properties,
+                build_quadruplet,
+                deduplicate,
+                _load_processed_manifest,
+                _load_custom_registry,
+                _load_prop_llm_cache,
+                extract_with_ollama,
+                extract_with_openai,
+            )
+        except ImportError:
+            raise RuntimeError(
+                "Module 'extract' not found. Please ensure the 'extract/' folder is in your PYTHONPATH."
+            )
 
         # Ensure caches are ready
         _load_processed_manifest()

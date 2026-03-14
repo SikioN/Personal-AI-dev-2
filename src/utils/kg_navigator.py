@@ -21,7 +21,7 @@ class KGNavigator:
             for node_id in current_layer:
                 # Get adjacent node IDs
                 try:
-                    adj_ids = self.kg_model.graph_struct.db_conn.get_adjecent_nids(node_id)
+                    adj_ids = self.kg_model.graph_struct.db_conn.get_adjacent_nids(node_id)
                     # print(f"DEBUG: [KGNavigator] Node {node_id} has {len(adj_ids)} adjacent nodes")
                 except Exception as e:
                     print(f"DEBUG: [KGNavigator] Error getting adjacent nodes for {node_id}: {e}")
@@ -32,10 +32,16 @@ class KGNavigator:
                      adj_ids = list(adj_ids)[:limit]
 
                 for adj_id in adj_ids:
-                    # Get quadruplets between node_id and adj_id
+                    # Get quadruplets between node_id and adj_id (Bi-directional)
                     try:
-                        quadruplets = self.kg_model.graph_struct.db_conn.get_quadruplets(node_id, adj_id)
-                        all_quadruplets.extend(quadruplets)
+                        # Forward: node_id -> adj_id
+                        f_quadruplets = self.kg_model.graph_struct.db_conn.get_quadruplets(node_id, adj_id)
+                        all_quadruplets.extend(f_quadruplets)
+                        
+                        # Backward: adj_id -> node_id
+                        b_quadruplets = self.kg_model.graph_struct.db_conn.get_quadruplets(adj_id, node_id)
+                        all_quadruplets.extend(b_quadruplets)
+                        
                     except Exception as e:
                         print(f"DEBUG: [KGNavigator] Error getting quadruplets between {node_id} and {adj_id}: {e}")
                     

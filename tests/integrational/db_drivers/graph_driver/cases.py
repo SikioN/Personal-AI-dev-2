@@ -4,7 +4,7 @@ PROJECT_BASE_DIR = '../'
 TEST_VOLUME_DIR = './volumes'
 sys.path.insert(0, PROJECT_BASE_DIR)
 
-from src.utils.data_structs import NodeCreator, Relation, RelationType, NodeType, TripletCreator
+from src.utils.data_structs import NodeCreator, Relation, RelationType, NodeType, QuadrupletCreator as TripletCreator
 
 # TO CHANGE
 AVAILABLE_GRAPH_DBS = ['neo4j', 'kuzu', 'inmemory_graph'] # 'neo4j', 'kuzu', 'inmemory_graph'

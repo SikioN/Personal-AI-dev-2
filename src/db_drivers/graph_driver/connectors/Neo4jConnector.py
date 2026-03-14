@@ -260,7 +260,7 @@ class Neo4jConnector(AbstractGraphDatabaseConnection):
                 session.close()
         return response
 
-    def get_adjecent_nids(self, base_node_id: str,
+    def get_adjacent_nids(self, base_node_id: str,
                           accepted_n_types: List[NodeType] = None) -> List[str]:
         if accepted_n_types is None:
             accepted_n_types = [NodeType.object, NodeType.hyper, NodeType.episodic]

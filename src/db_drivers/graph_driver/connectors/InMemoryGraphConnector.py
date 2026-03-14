@@ -185,7 +185,7 @@ class InMemoryGraphConnector(AbstractGraphDatabaseConnection):
 
         return formated_output
 
-    def get_adjecent_nids(self, base_node_id: str,
+    def get_adjacent_nids(self, base_node_id: str,
             accepted_n_types: List[NodeType] = [NodeType.object, NodeType.hyper, NodeType.episodic]) -> List[str]:
         if type(base_node_id) is not str:
             raise ValueError

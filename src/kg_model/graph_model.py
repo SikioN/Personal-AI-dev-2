@@ -140,14 +140,14 @@ class GraphModel:
 
             # Если в квадруплете у стартовой вершины только одно инцидентное ребро,
             # то готовим его к удалению из графовой и векторной структур данных
-            s_node_neighbours = self.db_conn.get_adjecent_nids(quadruplet.start_node.id)
+            s_node_neighbours = self.db_conn.get_adjacent_nids(quadruplet.start_node.id)
             if len(s_node_neighbours) == 1 and s_node_neighbours[0] == quadruplet.end_node.id:
                 graph_delete_info['s_node'] = True
                 vector_delete_info['s_node'] = True
 
             # Если в квадруплете у конечной вершины только одно инцидентное ребро,
             # то готовим его к удалению из графовой и векторной структур данных
-            e_node_neighbours = self.db_conn.get_adjecent_nids(quadruplet.end_node.id)
+            e_node_neighbours = self.db_conn.get_adjacent_nids(quadruplet.end_node.id)
             if len(e_node_neighbours) == 1 and e_node_neighbours[0] == quadruplet.start_node.id:
                 graph_delete_info['e_node'] = True
                 vector_delete_info['e_node'] = True
@@ -167,6 +167,9 @@ class GraphModel:
 
     def count_items(self) -> Dict[str, int]:
         return self.db_conn.count_items()
+
+    def get_adjacent_nids(self, node_id: str) -> List[str]:
+        return self.db_conn.get_adjacent_nids(node_id)
 
     def clear(self) -> None:
         """Метод предназначен для удаления содержимого графовой структуры данных."""
