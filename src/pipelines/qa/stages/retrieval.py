@@ -235,7 +235,7 @@ class HybridRetriever:
             if hasattr(emb_struct, 'vectordbs') and 'quadruplets' in emb_struct.vectordbs:
                 rel_to_quad = {q.relation.id: q for q in quads}
                 instances = emb_struct.vectordbs['quadruplets'].read(
-                    list(rel_to_quad.keys()), includes=['embeddings', 'ids'])
+                    list(rel_to_quad.keys()), includes=['embeddings'])
                 for inst in instances:
                     q = rel_to_quad.get(inst.id)
                     if q is not None and inst.embedding is not None:
@@ -278,7 +278,7 @@ class HybridRetriever:
             if hasattr(emb_struct, 'vectordbs') and 'quadruplets' in emb_struct.vectordbs:
                 rel_to_quad = {q.relation.id: q for q in hop_quads}
                 instances = emb_struct.vectordbs['quadruplets'].read(
-                    list(rel_to_quad.keys()), includes=['embeddings', 'ids'])
+                    list(rel_to_quad.keys()), includes=['embeddings'])
                 ranked = []
                 for inst in instances:
                     q = rel_to_quad.get(inst.id)
