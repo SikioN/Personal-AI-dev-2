@@ -72,7 +72,9 @@ app.py
 job.yaml
 
 # --- Standalone extraction tool ---
-extract/
+extract/venv/
+extract/new_docs/
+extract/__pycache__/
 
 # --- KuzuDB persistent storage ---
 data/kuzu_db/

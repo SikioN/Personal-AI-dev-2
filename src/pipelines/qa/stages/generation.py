@@ -55,9 +55,9 @@ class GenerationStage:
         """Build anonymized context using Wikidata Q/P IDs only."""
         lines, seen = [], set()
         for q in quads:
-            s = q.start_node.prop.get('wd_id', '?')
-            r = q.relation.prop.get('wd_id', '?')
-            o = q.end_node.prop.get('wd_id', '?')
+            s = q.start_node.prop.get('wd_id') or q.start_node.id or '?'
+            r = q.relation.prop.get('wd_id') or q.relation.id or '?'
+            o = q.end_node.prop.get('wd_id') or q.end_node.id or '?'
             t = q.time.name if q.time else 'Always'
             sig = f'{s}-{r}-{o}-{t}'
             if sig not in seen:

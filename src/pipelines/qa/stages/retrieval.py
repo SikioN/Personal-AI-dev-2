@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 
@@ -233,14 +234,19 @@ class HybridRetriever:
         try:
             emb_struct = self.kg_model.embeddings_struct
             if hasattr(emb_struct, 'vectordbs') and 'quadruplets' in emb_struct.vectordbs:
-                rel_to_quad = {q.relation.id: q for q in quads}
+                q_emb_norm = np.linalg.norm(q_emb)
+                rel_to_quads: dict = defaultdict(list)
+                for q in quads:
+                    rel_to_quads[q.relation.id].append(q)
                 instances = emb_struct.vectordbs['quadruplets'].read(
-                    list(rel_to_quad.keys()), includes=['embeddings'])
+                    list(rel_to_quads.keys()), includes=['embeddings'])
                 for inst in instances:
-                    q = rel_to_quad.get(inst.id)
-                    if q is not None and inst.embedding is not None:
-                        norm = np.linalg.norm(q_emb) * np.linalg.norm(inst.embedding) + 1e-9
-                        scores[q.id] = float(max(0.0, np.dot(q_emb, np.array(inst.embedding)) / norm))
+                    if inst.embedding is None:
+                        continue
+                    emb = np.array(inst.embedding)
+                    score_val = float(max(0.0, np.dot(q_emb, emb) / (q_emb_norm * np.linalg.norm(emb) + 1e-9)))
+                    for q in rel_to_quads.get(inst.id, []):
+                        scores[q.id] = score_val
                 if scores:
                     return scores
         except Exception:
@@ -276,15 +282,19 @@ class HybridRetriever:
 
             emb_struct = self.kg_model.embeddings_struct
             if hasattr(emb_struct, 'vectordbs') and 'quadruplets' in emb_struct.vectordbs:
-                rel_to_quad = {q.relation.id: q for q in hop_quads}
+                qv_norm = np.linalg.norm(query_vec)
+                rel_to_quads: dict = defaultdict(list)
+                for q in hop_quads:
+                    rel_to_quads[q.relation.id].append(q)
                 instances = emb_struct.vectordbs['quadruplets'].read(
-                    list(rel_to_quad.keys()), includes=['embeddings'])
+                    list(rel_to_quads.keys()), includes=['embeddings'])
                 ranked = []
                 for inst in instances:
-                    q = rel_to_quad.get(inst.id)
-                    if q is not None and inst.embedding is not None:
-                        norm = np.linalg.norm(query_vec) * np.linalg.norm(inst.embedding) + 1e-9
-                        sim = float(np.dot(query_vec, np.array(inst.embedding)) / norm)
+                    if inst.embedding is None:
+                        continue
+                    emb = np.array(inst.embedding)
+                    sim = float(np.dot(query_vec, emb) / (qv_norm * np.linalg.norm(emb) + 1e-9))
+                    for q in rel_to_quads.get(inst.id, []):
                         ranked.append((sim, q))
                 ranked.sort(key=lambda x: x[0], reverse=True)
                 top_quads = [q for _, q in ranked[:15]]

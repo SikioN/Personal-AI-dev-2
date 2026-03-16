@@ -56,13 +56,12 @@ def select_by_confidence_gap(
     if not results_sorted:
         return []
 
-    selected = [results_sorted[0]]
-    for prev, curr in zip(results_sorted, results_sorted[1:]):
-        if len(selected) >= max_f:
+    top_conf = results_sorted[0].conf
+    selected = []
+    for r in results_sorted[:max_f]:
+        if len(selected) >= min_f and (top_conf - r.conf) > gap:
             break
-        if len(selected) >= min_f and (prev.conf - curr.conf) > gap:
-            break
-        selected.append(curr)
+        selected.append(r)
 
     return selected
 
@@ -103,9 +102,9 @@ class ScoringStage:
 
         if resolved_time and self.temporal_scorer:
             for quad in candidates:
-                sid = quad.start_node.prop.get('wd_id')
-                rid = quad.relation.prop.get('wd_id')
-                oid = quad.end_node.prop.get('wd_id')
+                sid = quad.start_node.prop.get('wd_id') or quad.start_node.id
+                rid = quad.relation.prop.get('wd_id') or quad.relation.id
+                oid = quad.end_node.prop.get('wd_id') or quad.end_node.id
                 if sid and rid and oid:
                     try:
                         logit = float(self.temporal_scorer.score(sid, rid, oid, str(resolved_time)))
