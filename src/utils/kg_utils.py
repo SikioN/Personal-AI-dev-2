@@ -86,7 +86,7 @@ class KGEntityMapper:
             return self._name2id_cache[key]
 
         result = self._db.execute_query(
-            'MATCH (n) WHERE toLower(n.name) = toLower($name) RETURN n.str_id AS str_id LIMIT 1',
+            'MATCH (n) WHERE lower(n.name) = lower($name) RETURN n.str_id AS str_id LIMIT 1',
             params={'name': name}
         )
         str_id = result[0]['str_id'] if result else None
@@ -143,9 +143,9 @@ class KGEntityMapper:
         except Exception:
             pass
 
-        # Fallback: CONTAINS scan
+        # Fallback: contains scan (Kuzu-safe)
         result = self._db.execute_query(
-            'MATCH (n) WHERE toLower(n.name) CONTAINS toLower($query) '
+            'MATCH (n) WHERE lower(n.name) contains lower($query) '
             'RETURN n.name AS name LIMIT $limit',
             params={'query': query, 'limit': limit}
         )

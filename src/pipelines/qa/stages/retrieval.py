@@ -119,20 +119,66 @@ class HybridRetriever:
     # ------------------------------------------------------------------
 
     def _get_graph_candidates(self, wd_ids: List[str], names: List[str]) -> List[Quadruplet]:
-        """KGNavigator BFS — supports KuzuDB, Neo4j, and InMemory connectors.
+        """Graph candidate retrieval — supports KuzuDB, Neo4j, and InMemory connectors.
 
-        KuzuDB: get_adjacent_nids / get_quadruplets both accept str_id natively,
-        so QIDs are passed directly without a preliminary lookup.
-        Neo4j: execute_query resolves str_id → internal node.id first.
+        KuzuDB: str_id = md5(name+props), NOT the wd_id. Query by prop['wd_id'] MAP key.
+                Name fallback covers: (a) wd_id=None (resolution failure) and
+                                      (b) user-ingested entities without wd_id in prop.
+        Neo4j: execute_query resolves str_id → internal node.id via BFS.
         InMemory: strid_nodes_index maps str_id → internal integer ids.
         """
         connector = self.kg_model.graph_struct.db_conn
-        node_ids = []
 
+        # ── Branch A: KuzuDB ──────────────────────────────────────────────────
+        # str_id in KuzuDB is md5(stringify(node)), NOT the wd_id.
+        # Query directly by the 'wd_id' key in the prop MAP column.
+        # LIMIT 1000 covers ~150 unique quads even with 6x DB pollution from CREATE duplicates.
+        if hasattr(connector, 'conn'):
+            seen: set = set()
+            quads: List[Quadruplet] = []
+            for mid in wd_ids:
+                try:
+                    result = connector.conn.execute(
+                        "MATCH (n1:object)-[rel]->(n2:object) "
+                        "WHERE n1.prop['wd_id'] = $wid OR n2.prop['wd_id'] = $wid "
+                        "RETURN n1, rel, n2 LIMIT 1000;",
+                        {"wid": mid},
+                    )
+                    for q in connector.parse_query_quadruplets_output(result):
+                        if q.id not in seen:
+                            quads.append(q)
+                            seen.add(q.id)
+                except Exception as e:
+                    logger.warning(
+                        "[_get_graph_candidates] KuzuDB wd_id query failed for %s: %s", mid, e
+                    )
+            # Name fallback: triggers when wd_ids=[] (resolution failed) OR wd_id returned 0 quads
+            if not quads:
+                for name in names:
+                    if not name:
+                        continue
+                    try:
+                        result = connector.conn.execute(
+                            "MATCH (n1:object)-[rel]->(n2:object) "
+                            "WHERE n1.name = $name OR n2.name = $name "
+                            "RETURN n1, rel, n2 LIMIT 1000;",
+                            {"name": name},
+                        )
+                        for q in connector.parse_query_quadruplets_output(result):
+                            if q.id not in seen:
+                                quads.append(q)
+                                seen.add(q.id)
+                    except Exception as e:
+                        logger.warning(
+                            "[_get_graph_candidates] KuzuDB name query failed for %s: %s", name, e
+                        )
+            return quads
+
+        # ── Branch B: Neo4j / InMemory — BFS via KGNavigator (unchanged) ─────
+        node_ids = []
         for mid in wd_ids:
             try:
                 if hasattr(connector, 'execute_query'):
-                    # Neo4j path: resolve str_id → internal node.id
                     raw = connector.execute_query(
                         'MATCH (n) WHERE n.str_id = $str_id RETURN n',
                         params={'str_id': mid}
@@ -141,12 +187,8 @@ class HybridRetriever:
                         for node in connector.parse_query_nodes_output(raw):
                             node_ids.append(node.id)
                 elif hasattr(connector, 'strid_nodes_index'):
-                    # InMemory path: dict lookup
                     internal = connector.strid_nodes_index.get(mid, [])
                     node_ids.extend(internal)
-                elif hasattr(connector, 'conn'):
-                    # KuzuDB path: get_adjacent_nids / get_quadruplets use str_id directly
-                    node_ids.append(mid)
             except Exception:
                 pass
 
@@ -425,6 +467,12 @@ class HybridRetriever:
             if q.id not in seen2:
                 unique_candidates.append(q)
                 seen2.add(q.id)
+
+        # Adaptive search_k: sub-linear growth capped at n_unique (notebook-aligned)
+        # time_join gets max(search_k, 20) below — unchanged
+        n_unique = len(unique_candidates)
+        if not (filter_temporal or ext.q_type in ('simple_time', 'first_last')):
+            search_k = min(n_unique, max(self.config.search_k_floor, int(n_unique ** 0.55)))
 
         # Temporal filters
         if ext.q_type == 'before_after' and resolved_time:

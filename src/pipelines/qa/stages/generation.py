@@ -137,7 +137,8 @@ class GenerationStage:
         else:
             qid = self._decode_qid(raw_ans)
             if qid:
-                answer = self.mapper.get_label_with_id(qid)
+                label = self.mapper.get_label_with_id(qid)
+                answer = label if label else qid
             elif 'null' in raw_ans.lower():
                 answer = 'Unknown'
             else:
