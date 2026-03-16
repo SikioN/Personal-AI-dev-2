@@ -130,49 +130,51 @@ class HybridRetriever:
         connector = self.kg_model.graph_struct.db_conn
 
         # ── Branch A: KuzuDB ──────────────────────────────────────────────────
-        # str_id in KuzuDB is md5(stringify(node)), NOT the wd_id.
-        # Query directly by the 'wd_id' key in the prop MAP column.
-        # LIMIT 1000 covers ~150 unique quads even with 6x DB pollution from CREATE duplicates.
+        # build_kg.py sets node.id = QID → KuzuDB stores it as n.str_id.
+        # Two separate queries instead of OR to avoid LIMIT-splitting per branch.
+        # Explicit [rel:simple] mirrors get_quadruplets() — avoids implicit-rel-type bug.
+        # LIMIT 5000: covers ~150 unique quads even with 36x DB pollution from CREATE duplicates.
         if hasattr(connector, 'conn'):
             seen: set = set()
             quads: List[Quadruplet] = []
             for mid in wd_ids:
-                try:
-                    result = connector.conn.execute(
-                        "MATCH (n1:object)-[rel]->(n2:object) "
-                        "WHERE list_contains(map_extract(n1.prop, 'wd_id'), $wid) "
-                        "   OR list_contains(map_extract(n2.prop, 'wd_id'), $wid) "
-                        "RETURN n1, rel, n2 LIMIT 1000;",
-                        {"wid": mid},
-                    )
-                    for q in connector.parse_query_quadruplets_output(result):
-                        if q.id not in seen:
-                            quads.append(q)
-                            seen.add(q.id)
-                except Exception as e:
-                    logger.warning(
-                        "[_get_graph_candidates] KuzuDB wd_id query failed for %s: %s", mid, e
-                    )
-            # Name fallback: triggers when wd_ids=[] (resolution failed) OR wd_id returned 0 quads
-            if not quads:
-                for name in names:
-                    if not name:
-                        continue
+                for cypher in (
+                    "MATCH (n1:object)-[rel:simple]->(n2:object) WHERE n1.str_id = $wid "
+                    "RETURN n1, rel, n2 LIMIT 5000;",
+                    "MATCH (n1:object)-[rel:simple]->(n2:object) WHERE n2.str_id = $wid "
+                    "RETURN n1, rel, n2 LIMIT 5000;",
+                ):
                     try:
-                        result = connector.conn.execute(
-                            "MATCH (n1:object)-[rel]->(n2:object) "
-                            "WHERE n1.name = $name OR n2.name = $name "
-                            "RETURN n1, rel, n2 LIMIT 1000;",
-                            {"name": name},
-                        )
+                        result = connector.conn.execute(cypher, {"wid": mid})
                         for q in connector.parse_query_quadruplets_output(result):
                             if q.id not in seen:
                                 quads.append(q)
                                 seen.add(q.id)
                     except Exception as e:
                         logger.warning(
-                            "[_get_graph_candidates] KuzuDB name query failed for %s: %s", name, e
+                            "[_get_graph_candidates] KuzuDB str_id query failed for %s: %s", mid, e
                         )
+            # Name fallback: triggers when wd_ids=[] (resolution failed) OR str_id returned 0 quads
+            if not quads:
+                for name in names:
+                    if not name:
+                        continue
+                    for cypher in (
+                        "MATCH (n1:object)-[rel:simple]->(n2:object) WHERE n1.name = $name "
+                        "RETURN n1, rel, n2 LIMIT 5000;",
+                        "MATCH (n1:object)-[rel:simple]->(n2:object) WHERE n2.name = $name "
+                        "RETURN n1, rel, n2 LIMIT 5000;",
+                    ):
+                        try:
+                            result = connector.conn.execute(cypher, {"name": name})
+                            for q in connector.parse_query_quadruplets_output(result):
+                                if q.id not in seen:
+                                    quads.append(q)
+                                    seen.add(q.id)
+                        except Exception as e:
+                            logger.warning(
+                                "[_get_graph_candidates] KuzuDB name query failed for %s: %s", name, e
+                            )
             return quads
 
         # ── Branch B: Neo4j / InMemory — BFS via KGNavigator (unchanged) ─────
