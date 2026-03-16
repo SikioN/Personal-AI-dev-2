@@ -12,6 +12,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src/ ./src/
+COPY extract/ ./extract/
 COPY bot.py .
 COPY scripts/ ./scripts/
 COPY setup.sh run_db.sh .env.example ./

@@ -140,7 +140,8 @@ class HybridRetriever:
                 try:
                     result = connector.conn.execute(
                         "MATCH (n1:object)-[rel]->(n2:object) "
-                        "WHERE n1.prop['wd_id'] = $wid OR n2.prop['wd_id'] = $wid "
+                        "WHERE list_contains(map_extract(n1.prop, 'wd_id'), $wid) "
+                        "   OR list_contains(map_extract(n2.prop, 'wd_id'), $wid) "
                         "RETURN n1, rel, n2 LIMIT 1000;",
                         {"wid": mid},
                     )
