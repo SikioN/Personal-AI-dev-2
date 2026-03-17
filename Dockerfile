@@ -17,6 +17,9 @@ COPY bot.py .
 COPY scripts/ ./scripts/
 COPY setup.sh run_db.sh .env.example ./
 
+# Bundle Wikidata properties cache to avoid SPARQL fetch on first run
+COPY extract_data/wikidata_properties_cache.json ./extract_data/
+
 # models/ and wikidata_big/ are volume-mounted (or downloaded at runtime via entrypoint.sh)
 # to keep the image size manageable and allow model updates without rebuilds.
 

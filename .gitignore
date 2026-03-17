@@ -151,4 +151,5 @@ src/pipelines/qa/answers_aggregation/
 src/pipelines/qa/kg_reasoning/
 src/pipelines/qa/query_preprocessing/
 src/utils/cache_kv.py
-extract_data/
+extract_data/*
+!extract_data/wikidata_properties_cache.json

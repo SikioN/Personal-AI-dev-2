@@ -423,6 +423,7 @@ def _load_processed_manifest() -> None:
 
 
 def _save_processed_manifest() -> None:
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     with open(PROCESSED_MANIFEST_FILE, "w", encoding="utf-8") as f:
         json.dump(_processed_manifest, f, ensure_ascii=False, indent=2)
 
@@ -582,6 +583,7 @@ def extract_with_openai(text: str, api_key: str, model: str = "gpt-4o",
     chunks = chunk_text(text)
     all_quads: list[dict] = []
 
+    failed_chunks = 0
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = {executor.submit(_process_chunk_openai, chunk, client, model): i
                    for i, chunk in enumerate(chunks)}
@@ -595,8 +597,11 @@ def extract_with_openai(text: str, api_key: str, model: str = "gpt-4o",
                 bar.set_postfix(tokens=f"{_token_stats['total']:,}")
             except Exception as e:
                 log.error(f"OpenAI chunk error: {e}")
+                failed_chunks += 1
 
-    return all_quads
+    if failed_chunks:
+        log.warning(f"extract_with_openai: {failed_chunks}/{len(chunks)} chunks failed")
+    return all_quads, failed_chunks
 
 def parse_llm_json(raw: str) -> list[dict]:
     """Extract JSON array from LLM response (handles markdown fences)."""
@@ -856,7 +861,7 @@ def main():
         if args.api == "ollama":
             raw_quads = extract_with_ollama(text, model=args.model)
         elif args.api in ("openai", "deepseek", "compatible"):
-            raw_quads = extract_with_openai(
+            raw_quads, _chunk_errors = extract_with_openai(
                 text,
                 api_key=args.api_key,
                 model=args.model,

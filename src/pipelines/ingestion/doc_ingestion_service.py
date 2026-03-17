@@ -221,10 +221,11 @@ class DocIngestionService:
             progress_callback(f"Извлечение фактов из {fname}...")
 
         try:
+            api_chunk_errors = 0
             if llm_backend == "ollama":
                 raw_quads = extract_with_ollama(text, model=llm_model)
             elif llm_backend in ("openai", "deepseek", "chatgpt", "qwen", "compatible"):
-                raw_quads = extract_with_openai(
+                raw_quads, api_chunk_errors = extract_with_openai(
                     text,
                     api_key=llm_api_key,
                     model=llm_model,
@@ -252,10 +253,11 @@ class DocIngestionService:
             # If this is a standalone call (not from ingest_directory), finalize now
             # We detect this by checking if we're inside a loop or not (simplified)
             # Actually, to avoid double-finalization in ingest_directory, we'll return the quads.
+            build_errors = len(raw_quads) - len(built) if raw_quads else 0
             return {
                 "quadruplets": deduped,
                 "added": len(deduped),
-                "errors": len(raw_quads) - len(built) if raw_quads else 0
+                "errors": build_errors + api_chunk_errors,
             }
 
         except Exception as e:
