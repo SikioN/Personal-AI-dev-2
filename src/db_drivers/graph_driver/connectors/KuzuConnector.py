@@ -71,10 +71,12 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
     def create_node_query(self, node: Node) -> tuple[str, dict]:
         node_t = self.config.params['table_type_map']['nodes']['forward'][node.type.value]
         prop = {str(k): str(v) for k, v in node.prop.items()}
-        # CAST(map(...) AS MAP(STRING,STRING)) fixes type inference for empty lists
+        # Kuzu can't infer MAP(STRING,STRING) from empty lists at binding time — add sentinel
+        if not prop:
+            prop = {"_": ""}
         query = (
             f"MERGE (n:{node_t} {{str_id: $str_id}}) "
-            f"SET n.name = $name, n.prop = CAST(map($prop_keys, $prop_values) AS MAP(STRING, STRING));"
+            f"SET n.name = $name, n.prop = map($prop_keys, $prop_values);"
         )
         return query, {
             "str_id": node.id,
@@ -102,13 +104,12 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
         t_id = quadruplet.id
         r_id = quadruplet.relation.id
 
-        # CAST(map(...) AS MAP(STRING,STRING)) fixes type inference for empty lists
         query = (
             f"MATCH (s:{s_type}), (o:{o_type}) "
             f"WHERE s.str_id = $s_id AND o.str_id = $o_id "
             f"CREATE (s)-[rel:{rel_type} {{ "
             f"name: $rel_name, t_id: $t_id, str_id: $r_id, "
-            f"prop: CAST(map($prop_keys, $prop_values) AS MAP(STRING, STRING)) "
+            f"prop: map($prop_keys, $prop_values) "
             f"}}]->(o)"
         )
         params = {
