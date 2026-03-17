@@ -26,7 +26,7 @@ class QAConfig:
     })
     alpha_default: float = 0.3
     tcomplex_threshold: float = -3.0   # P1 adaptive alpha gate
-    min_tl_count: int = 1  # 2.5: enable TComplEx even when only 1 quad has valid wikidata IDs
+    min_tl_count: int = 2
     confidence_gap: float = 0.20       # P3 gap-based selection threshold
     min_facts: int = 2
     max_facts: int = 7

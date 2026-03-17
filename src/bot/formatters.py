@@ -113,6 +113,20 @@ def format_ingest_result(stats: dict, use_inmemory: bool) -> str:
     return "\n".join(lines)
 
 
+def format_ingest_sample(quads: list, max_n: int = 5) -> str:
+    """Format a sample of extracted quadruplets for Telegram display."""
+    lines = []
+    for i, q in enumerate(quads[:max_n], 1):
+        s = q.get('s', {}).get('name', '?')
+        p = q.get('r', {}).get('name', '?')
+        o = q.get('o', {}).get('name', '?')
+        t_prop = q.get('t', {}).get('prop', {})
+        ts, te = t_prop.get('start', ''), t_prop.get('end', '')
+        t_str = f"{ts}–{te}" if ts and te else (ts or te or 'н/д')
+        lines.append(f"{i}\\. {_esc(s)} → {_esc(p)} → {_esc(o)} \\({_esc(t_str)}\\)")
+    return '\n'.join(lines)
+
+
 def _format_time(q) -> str:
     if q.time is None or q.time.name in ("Always", "", None):
         return ""

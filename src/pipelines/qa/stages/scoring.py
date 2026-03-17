@@ -155,33 +155,19 @@ class ScoringStage:
             )
             top_scored = [c[1] for c in (timed[:5] if is_first else timed[-5:])]
 
-        # P3: gap-based selection (replaces LLM fact-selection)
-        all_context = retrieval.temporal_bucket + [r.quad for r in top_scored]
-        # Build ScoredResult list for temporal_bucket items too
-        # 2.4: temporal_bucket facts get a minimum confidence boost so they are not
-        # systematically pushed to the tail during gap-based selection
-        tb_scored = []
-        for q in retrieval.temporal_bucket:
-            e5_val = e5_scores.get(q.id, 0.0)
-            tb_scored.append(ScoredResult(
-                quad=q,
-                conf=max(0.5, e5_val),   # minimum 0.5 — temporal facts are relevant by construction
-                e5=e5_val,
-                tp=0.5,                  # explicit temporal bonus
-                tl=float('-inf'),
-            ))
-
-        combined = sorted(
-            tb_scored + top_scored,
-            key=lambda x: x.conf,
-            reverse=True,
-        )
-        selected_scored = select_by_confidence_gap(
-            combined,
+        # P3: gap-based selection — notebook-aligned
+        # temporal_bucket passes through directly (no boost);
+        # gap-select only extra facts outside the bucket
+        tb_ids = {q.id for q in retrieval.temporal_bucket}
+        extra_scored = [r for r in top_scored if r.quad.id not in tb_ids]
+        n_max_extra = max(self.config.min_facts,
+                          self.config.max_facts - len(retrieval.temporal_bucket))
+        gap_selected = select_by_confidence_gap(
+            extra_scored,
             min_f=self.config.min_facts,
-            max_f=self.config.max_facts,
+            max_f=n_max_extra,
             gap=self.config.confidence_gap,
         )
-        selected_quads = [r.quad for r in selected_scored]
+        selected_quads = retrieval.temporal_bucket + [r.quad for r in gap_selected]
 
         return ScoringResult(all_scored=scored, selected_quads=selected_quads)

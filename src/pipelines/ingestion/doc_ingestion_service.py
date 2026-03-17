@@ -275,9 +275,9 @@ class DocIngestionService:
         quads = result.get("quadruplets", [])
         extraction_errors = result.get("errors", 0)
         if not quads:
-            return {"added": 0, "errors": extraction_errors}
+            return {"added": 0, "errors": extraction_errors, "quadruplets": []}
         added = self._finalize_ingestion(quads, tkbc_dir, progress_callback)
-        return {"added": added, "errors": extraction_errors}
+        return {"added": added, "errors": extraction_errors, "quadruplets": quads}
 
     def _finalize_ingestion(self, all_quadruplets: list[dict], tkbc_dir: Optional[str], progress_callback=None) -> int:
         if not all_quadruplets:

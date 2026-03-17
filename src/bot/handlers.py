@@ -470,6 +470,8 @@ async def handle_document(message: Message, bot: Bot):
                 )
 
             added = res["added"]
+            sample_quads = res.get("quadruplets", [])
+
             if added == 0 and res["errors"] == 0:
                 await status_msg.edit_text(
                     f"В файле *{fname_esc}* не найдено новых фактов\\.",
@@ -477,12 +479,18 @@ async def handle_document(message: Message, bot: Bot):
                 )
                 return
 
-            await status_msg.edit_text(
+            summary = (
                 f"Обработка *{fname_esc}* завершена\\!\n\n"
                 f"Добавлено фактов: `{added}`\n"
-                f"Ошибок: `{res['errors']}`",
-                parse_mode="MarkdownV2",
+                f"Ошибок: `{res['errors']}`"
             )
+            if sample_quads:
+                from src.bot.formatters import format_ingest_sample
+                sample_text = format_ingest_sample(sample_quads, max_n=5)
+                total_str = f" \\(показаны 5 из {len(sample_quads)}\\)" if len(sample_quads) > 5 else ""
+                summary += f"\n\n*Примеры извлечённых фактов*{total_str}:\n{sample_text}"
+
+            await status_msg.edit_text(summary, parse_mode="MarkdownV2")
         except Exception as ingest_err:
             logger.exception("In-flight ingestion failed")
             await status_msg.edit_text(
