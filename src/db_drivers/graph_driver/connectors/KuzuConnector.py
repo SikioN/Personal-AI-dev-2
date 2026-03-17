@@ -12,10 +12,10 @@ from ....utils import Quadruplet, NodeType
 DEFAULT_KUZU_CONFIG = GraphDBConnectionConfig(
     params={'path': '../../kuzu_volume', 'buffer_pool_size': 1024**3,
             'schema': [
-                "CREATE NODE TABLE IF NOT EXISTS object (id SERIAL, name STRING, prop MAP(STRING, STRING), str_id STRING, PRIMARY KEY(id));",
-                "CREATE NODE TABLE IF NOT EXISTS hyper (id SERIAL, name STRING, prop MAP(STRING, STRING), str_id STRING, PRIMARY KEY(id));",
-                "CREATE NODE TABLE IF NOT EXISTS episodic (id SERIAL, name STRING, prop MAP(STRING, STRING), str_id STRING, PRIMARY KEY(id));",
-                "CREATE NODE TABLE IF NOT EXISTS time (id SERIAL, name STRING, prop MAP(STRING, STRING), str_id STRING, PRIMARY KEY(id));", # Added Time node
+                "CREATE NODE TABLE IF NOT EXISTS object (str_id STRING, name STRING, prop MAP(STRING, STRING), PRIMARY KEY(str_id));",
+                "CREATE NODE TABLE IF NOT EXISTS hyper (str_id STRING, name STRING, prop MAP(STRING, STRING), PRIMARY KEY(str_id));",
+                "CREATE NODE TABLE IF NOT EXISTS episodic (str_id STRING, name STRING, prop MAP(STRING, STRING), PRIMARY KEY(str_id));",
+                "CREATE NODE TABLE IF NOT EXISTS time (str_id STRING, name STRING, prop MAP(STRING, STRING), PRIMARY KEY(str_id));", # Added Time node
                 "CREATE REL TABLE IF NOT EXISTS simple (FROM object TO object, name STRING, t_id STRING, str_id STRING, prop MAP(STRING, STRING));",
                 "CREATE REL TABLE IF NOT EXISTS hyper_rel (FROM object TO hyper, name STRING, t_id STRING, str_id STRING, prop MAP(STRING, STRING));",
                 "CREATE REL TABLE GROUP IF NOT EXISTS episodic_rel (FROM object TO episodic, FROM hyper TO episodic, name STRING, t_id STRING, str_id STRING, prop MAP(STRING, STRING));",
@@ -75,10 +75,12 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
         
         node_t = self.config.params['table_type_map']['nodes']['forward'][node.type.value]
         
-        # In Kuzu, MAP literals can take parameter values.
-        # Format: CREATE (n:LABEL {name: $name, str_id: $str_id, prop: $prop})
-        query = f"CREATE (n:{node_t} {{name: $name, str_id: $str_id, prop: $prop}});"
-        return query, {"name": node.name, "str_id": node.id, "prop": props}
+        # MERGE on PK (str_id) — idempotent, prevents node duplication across builds
+        query = (
+            f"MERGE (n:{node_t} {{str_id: $str_id}}) "
+            f"SET n.name = $name, n.prop = $prop;"
+        )
+        return query, {"str_id": node.id, "name": node.name, "prop": props}
 
 
     def create_rel_query(self, quadruplet: Quadruplet) -> tuple[str, dict]:

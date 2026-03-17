@@ -139,10 +139,10 @@ class HybridRetriever:
             quads: List[Quadruplet] = []
             for mid in wd_ids:
                 for cypher in (
-                    "MATCH (n1:object)-[rel:simple]->(n2:object) WHERE n1.str_id = $wid "
-                    "RETURN n1, rel, n2 LIMIT 5000;",
-                    "MATCH (n1:object)-[rel:simple]->(n2:object) WHERE n2.str_id = $wid "
-                    "RETURN n1, rel, n2 LIMIT 5000;",
+                    "MATCH (n1)-[rel:simple]->(n2) WHERE n1.str_id = $wid "
+                    "RETURN n1, rel, n2 LIMIT 1000;",
+                    "MATCH (n1)-[rel:simple]->(n2) WHERE n2.str_id = $wid "
+                    "RETURN n1, rel, n2 LIMIT 1000;",
                 ):
                     try:
                         result = connector.conn.execute(cypher, {"wid": mid})
@@ -160,10 +160,10 @@ class HybridRetriever:
                     if not name:
                         continue
                     for cypher in (
-                        "MATCH (n1:object)-[rel:simple]->(n2:object) WHERE n1.name = $name "
-                        "RETURN n1, rel, n2 LIMIT 5000;",
-                        "MATCH (n1:object)-[rel:simple]->(n2:object) WHERE n2.name = $name "
-                        "RETURN n1, rel, n2 LIMIT 5000;",
+                        "MATCH (n1)-[rel:simple]->(n2) WHERE n1.name = $name "
+                        "RETURN n1, rel, n2 LIMIT 1000;",
+                        "MATCH (n1)-[rel:simple]->(n2) WHERE n2.name = $name "
+                        "RETURN n1, rel, n2 LIMIT 1000;",
                     ):
                         try:
                             result = connector.conn.execute(cypher, {"name": name})
