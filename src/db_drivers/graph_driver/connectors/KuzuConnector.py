@@ -133,7 +133,8 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
             raise ValueError
 
         # Wrap entire batch in one transaction — avoids per-execute auto-commit overhead
-        self.conn.begin_transaction()
+        # KuzuDB manages transactions via Cypher statements
+        self.conn.execute("BEGIN TRANSACTION;")
         try:
             for i, quadruplet in enumerate(quadruplets):
                 cur_info = creation_info.get(i, None)
@@ -151,9 +152,12 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
 
                 insert_rel_query, p = self.create_rel_query(quadruplet)
                 self.conn.execute(insert_rel_query, p)
-            self.conn.commit()
+            self.conn.execute("COMMIT;")
         except Exception:
-            self.conn.rollback()
+            try:
+                self.conn.execute("ROLLBACK;")
+            except Exception:
+                pass
             raise
 
     def read(self, ids: List[str]) -> List[Quadruplet]:
