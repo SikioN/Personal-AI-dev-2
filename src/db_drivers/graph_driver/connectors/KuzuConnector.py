@@ -132,23 +132,29 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
         if len(quadruplets) != len(unique_ids):
             raise ValueError
 
-        for i, quadruplet in enumerate(quadruplets):
-            cur_info = creation_info.get(i, None)
-            if cur_info is None or cur_info['s_node']:
-                insert_subj_query, p = self.create_node_query(quadruplet.start_node)
-                self.conn.execute(insert_subj_query, p)
-            if cur_info is None or cur_info['e_node']:
-                insert_obj_query, p = self.create_node_query(quadruplet.end_node)
-                self.conn.execute(insert_obj_query, p)
-            
-            # Time node
-            if (cur_info is None or cur_info.get('t_node', False)) and quadruplet.time:
-                 insert_time_query, p = self.create_node_query(quadruplet.time)
-                 self.conn.execute(insert_time_query, p)
+        # Wrap entire batch in one transaction — avoids per-execute auto-commit overhead
+        self.conn.begin_transaction()
+        try:
+            for i, quadruplet in enumerate(quadruplets):
+                cur_info = creation_info.get(i, None)
+                if cur_info is None or cur_info['s_node']:
+                    insert_subj_query, p = self.create_node_query(quadruplet.start_node)
+                    self.conn.execute(insert_subj_query, p)
+                if cur_info is None or cur_info['e_node']:
+                    insert_obj_query, p = self.create_node_query(quadruplet.end_node)
+                    self.conn.execute(insert_obj_query, p)
 
-            insert_rel_query, p = self.create_rel_query(quadruplet)
+                # Time node
+                if (cur_info is None or cur_info.get('t_node', False)) and quadruplet.time:
+                    insert_time_query, p = self.create_node_query(quadruplet.time)
+                    self.conn.execute(insert_time_query, p)
 
-            self.conn.execute(insert_rel_query, p)
+                insert_rel_query, p = self.create_rel_query(quadruplet)
+                self.conn.execute(insert_rel_query, p)
+            self.conn.commit()
+        except Exception:
+            self.conn.rollback()
+            raise
 
     def read(self, ids: List[str]) -> List[Quadruplet]:
         for t_id in ids:

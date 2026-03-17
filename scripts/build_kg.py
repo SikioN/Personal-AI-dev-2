@@ -205,7 +205,7 @@ def main():
             if need_chroma:
                 all_quad_objs.extend(quad_objs)
 
-        if (start // BATCH) % 20 == 0:
+        if (start // BATCH) % 5 == 0:
             done = min(start + BATCH, total)
             logger.info(f"  {done:,}/{total:,} ({100 * done // total}%)")
 
