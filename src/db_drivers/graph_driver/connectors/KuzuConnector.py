@@ -69,18 +69,20 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
         return hasattr(self, 'conn')
 
     def create_node_query(self, node: Node) -> tuple[str, dict]:
-        props = dict(node.prop)
-        props['name'] = node.name
-        props['str_id'] = node.id
-        
         node_t = self.config.params['table_type_map']['nodes']['forward'][node.type.value]
-        
+        prop = {str(k): str(v) for k, v in node.prop.items()}
         # MERGE on PK (str_id) — idempotent, prevents node duplication across builds
+        # map($prop_keys, $prop_values) avoids STRUCT inference for MAP(STRING, STRING)
         query = (
             f"MERGE (n:{node_t} {{str_id: $str_id}}) "
-            f"SET n.name = $name, n.prop = $prop;"
+            f"SET n.name = $name, n.prop = map($prop_keys, $prop_values);"
         )
-        return query, {"str_id": node.id, "name": node.name, "prop": props}
+        return query, {
+            "str_id": node.id,
+            "name": node.name,
+            "prop_keys": list(prop.keys()),
+            "prop_values": list(prop.values()),
+        }
 
 
     def create_rel_query(self, quadruplet: Quadruplet) -> tuple[str, dict]:
@@ -88,9 +90,9 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
         time_name = quadruplet.time.name if quadruplet.time else "Unknown"
         
         # Merge properties
-        combined_prop = dict(quadruplet.relation.prop)
+        combined_prop = {str(k): str(v) for k, v in quadruplet.relation.prop.items()}
         combined_prop['time_name'] = time_name
-        
+
         s_type = self.config.params['table_type_map']['nodes']['forward'][quadruplet.start_node.type.value]
         o_type = self.config.params['table_type_map']['nodes']['forward'][quadruplet.end_node.type.value]
         rel_type = self.config.params['table_type_map']['relations']['forward'][quadruplet.relation.type.value]
@@ -101,13 +103,13 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
         t_id = quadruplet.id
         r_id = quadruplet.relation.id
 
-        # Kuzu supports parameterized variables. Use $var syntax.
+        # map($prop_keys, $prop_values) avoids STRUCT inference for MAP(STRING, STRING)
         query = (
             f"MATCH (s:{s_type}), (o:{o_type}) "
             f"WHERE s.str_id = $s_id AND o.str_id = $o_id "
             f"CREATE (s)-[rel:{rel_type} {{ "
             f"name: $rel_name, t_id: $t_id, str_id: $r_id, "
-            f"prop: $prop "
+            f"prop: map($prop_keys, $prop_values) "
             f"}}]->(o)"
         )
         params = {
@@ -116,7 +118,8 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
             "rel_name": rel_name,
             "t_id": t_id,
             "r_id": r_id,
-            "prop": combined_prop
+            "prop_keys": list(combined_prop.keys()),
+            "prop_values": list(combined_prop.values()),
         }
         return query, params
 

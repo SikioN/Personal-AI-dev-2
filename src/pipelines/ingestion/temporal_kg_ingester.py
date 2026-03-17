@@ -25,6 +25,7 @@ import logging
 import os
 import pickle
 from dataclasses import dataclass, field
+from datetime import datetime as _dt
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -195,18 +196,25 @@ class TemporalKGIngester:
 
                 # Parse temporal range
                 t_props = t_data.get("prop", {})
-                try:
-                    start_year = int(t_props["start"])
-                    end_year   = int(t_props.get("end", t_props["start"]))
-                except (KeyError, ValueError, TypeError):
-                    logger.warning(
-                        "[TemporalKGIngester] Skipping record %d: bad year in t.prop — %s",
-                        i, t_props,
-                    )
-                    errors += 1
-                    continue
+                start_raw = str(t_props.get("start", "") or "").strip()
+                end_raw   = str(t_props.get("end", start_raw) or start_raw).strip()
 
-                t_name = f"{start_year} - {end_year}" if start_year != end_year else str(start_year)
+                if not start_raw or start_raw.lower() in ("unknown", "none"):
+                    # Atemporal fact — store with 'Always' sentinel
+                    start_year, end_year = None, None
+                    t_name = "Always"
+                else:
+                    try:
+                        start_year = int(start_raw)
+                        end_year   = int(end_raw) if end_raw and end_raw.lower() not in ("unknown", "none") else start_year
+                        t_name = f"{start_year} - {end_year}" if start_year != end_year else str(start_year)
+                    except (ValueError, TypeError):
+                        logger.debug(
+                            "[TemporalKGIngester] Record %d: non-integer year '%s', defaulting to 'Always'",
+                            i, start_raw
+                        )
+                        start_year, end_year = None, None
+                        t_name = "Always"
 
                 s_name = s_data.get("name", s_data.get("id", "Unknown"))
                 o_name = o_data.get("name", o_data.get("id", "Unknown"))
@@ -425,14 +433,14 @@ class TemporalKGIngester:
                 elif len(years) == 1:
                     start_year = end_year = years[0]
                 else:
-                    logger.warning(
-                        "[TemporalKGIngester] Could not parse years from time node '%s', skipping tkbc row.",
+                    logger.debug(
+                        "[TemporalKGIngester] Atemporal fact '%s' (no years), skipping TComplEx update.",
                         quad.time.name,
                     )
                     continue
             else:
                 logger.debug(
-                    "[TemporalKGIngester] Quad has no temporal info, skipping tkbc row."
+                    "[TemporalKGIngester] Atemporal fact (Always/Unknown), skipping TComplEx update."
                 )
                 continue
 

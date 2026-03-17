@@ -14,9 +14,9 @@ from src.utils.data_structs import Quadruplet, QuadrupletCreator
 from src.utils.kg_navigator import KGNavigator
 
 if TYPE_CHECKING:
-    from src.llm.base_client import BaseLLMClient
-    from src.config.qa_config import QAConfig
-    from src.utils.wikidata_utils import WikidataMapper
+    from ....llm.base_client import BaseLLMClient
+    from ....config.qa_config import QAConfig
+    from ....utils.wikidata_utils import WikidataMapper
 
 
 @dataclass
@@ -221,7 +221,7 @@ class HybridRetriever:
         ChromaDB 'ip' space: sim = 1.0 - distance (for normalised E5 vectors).
         """
         try:
-            from src.db_drivers.vector_driver import VectorDBInstance
+            from ....db_drivers.vector_driver import VectorDBInstance
             embedder = self.kg_model.embeddings_struct.embedder
             q_emb = embedder.encode_queries([question])[0]
 

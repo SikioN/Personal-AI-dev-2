@@ -151,10 +151,13 @@ class DocIngestionService:
 
         for fp, txt in new_docs:
             res = self.ingest_file(fp, txt, tkbc_dir=tkbc_dir, progress_callback=progress_callback)
-            all_quads.extend(res.get("quadruplets", []))
+            quads = res.get("quadruplets", [])
+            all_quads.extend(quads)
             errors_total += res.get("errors", 0)
-            if res.get("added", 0) > 0 or not res.get("errors"):
+            if quads or not res.get("errors"):
                 files_processed += 1
+            
+            logger.info("[DocIngestionService] File %s: Extracted %d facts", Path(fp).name, len(quads))
 
         added = self._finalize_ingestion(all_quads, tkbc_dir, progress_callback)
 
@@ -199,8 +202,11 @@ class DocIngestionService:
         _load_prop_llm_cache()
 
         if text is None:
-            with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-                text = f.read()
+            from extract.extract_quadruplets import read_document
+            text = read_document(filepath)  # fitz/docx/pptx/txt — correct parsing
+            if text is None:
+                logger.warning("[DocIngestionService] Cannot read file: %s", filepath)
+                return {"quadruplets": [], "added": 0, "errors": 1}
 
         prop_map = fetch_all_wikidata_properties(use_cache=True)
         llm_caller = self._make_llm_caller()
@@ -237,6 +243,8 @@ class DocIngestionService:
                 except Exception as e:
                     logger.debug("build_quadruplet error: %s", e)
 
+            logger.info("[DocIngestionService] LLM found %d candidates, %d normalized successfully", len(raw_quads), len(built))
+
             deduped = deduplicate(built)
             from extract.extract_quadruplets import _mark_processed
             _mark_processed(filepath, len(deduped))
@@ -265,8 +273,11 @@ class DocIngestionService:
         """
         result = self.ingest_file(filepath, tkbc_dir=tkbc_dir, progress_callback=progress_callback)
         quads = result.get("quadruplets", [])
-        added = self._finalize_ingestion(quads, tkbc_dir, progress_callback) if quads else 0
-        return {"added": added, "errors": result.get("errors", 0)}
+        extraction_errors = result.get("errors", 0)
+        if not quads:
+            return {"added": 0, "errors": extraction_errors}
+        added = self._finalize_ingestion(quads, tkbc_dir, progress_callback)
+        return {"added": added, "errors": extraction_errors}
 
     def _finalize_ingestion(self, all_quadruplets: list[dict], tkbc_dir: Optional[str], progress_callback=None) -> int:
         if not all_quadruplets:
