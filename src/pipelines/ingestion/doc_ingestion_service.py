@@ -156,7 +156,8 @@ class DocIngestionService:
             errors_total += res.get("errors", 0)
             if quads or not res.get("errors"):
                 files_processed += 1
-            
+            # In batch mode mark after extraction (KG write is one batch for all files)
+            _mark_processed(fp, len(quads))
             logger.info("[DocIngestionService] File %s: Extracted %d facts", Path(fp).name, len(quads))
 
         added = self._finalize_ingestion(all_quads, tkbc_dir, progress_callback)
@@ -247,12 +248,6 @@ class DocIngestionService:
             logger.info("[DocIngestionService] LLM found %d candidates, %d normalized successfully", len(raw_quads), len(built))
 
             deduped = deduplicate(built)
-            from extract.extract_quadruplets import _mark_processed
-            _mark_processed(filepath, len(deduped))
-
-            # If this is a standalone call (not from ingest_directory), finalize now
-            # We detect this by checking if we're inside a loop or not (simplified)
-            # Actually, to avoid double-finalization in ingest_directory, we'll return the quads.
             build_errors = len(raw_quads) - len(built) if raw_quads else 0
             return {
                 "quadruplets": deduped,
@@ -279,6 +274,10 @@ class DocIngestionService:
         if not quads:
             return {"added": 0, "errors": extraction_errors, "quadruplets": []}
         added = self._finalize_ingestion(quads, tkbc_dir, progress_callback)
+        # Mark ONLY after facts are actually written to KG
+        if added > 0:
+            from extract.extract_quadruplets import _mark_processed
+            _mark_processed(filepath, added)
         return {"added": added, "errors": extraction_errors, "quadruplets": quads}
 
     def _finalize_ingestion(self, all_quadruplets: list[dict], tkbc_dir: Optional[str], progress_callback=None) -> int:

@@ -342,7 +342,13 @@ async def cmd_ingest(message: Message):
         return
     _last_ask[message.chat.id] = now
 
-    status_msg = await message.answer("Подготовка к извлечению...")
+    args = (message.text or "").strip().split()
+    force_reprocess = len(args) > 1 and args[1].lower() == "force"
+
+    status_msg = await message.answer(
+        "Подготовка к извлечению (принудительная переработка)..." if force_reprocess
+        else "Подготовка к извлечению..."
+    )
     loop = asyncio.get_event_loop()
 
     def sync_progress(text: str):
@@ -366,7 +372,7 @@ async def cmd_ingest(message: Message):
                 input_dir,
                 False,
                 None,
-                False,
+                force_reprocess,
                 sync_progress,
             )
         except Exception as e:
