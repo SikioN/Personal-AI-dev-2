@@ -572,12 +572,12 @@ def _process_chunk_openai(chunk: str, client, model: str) -> tuple[list[dict], i
 
 def extract_with_openai(text: str, api_key: str, model: str = "gpt-4o",
                         base_url: Optional[str] = None,
-                        workers: int = 4) -> list[dict]:
+                        workers: int = 4) -> tuple[list[dict], int]:
     try:
         from openai import OpenAI
     except ImportError:
         log.error("Install openai: pip install openai")
-        return []
+        return [], 0
 
     client = OpenAI(api_key=api_key, base_url=base_url)
     chunks = chunk_text(text)
