@@ -387,6 +387,18 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
                     pass
         return False
         
+    def execute_query(self, query: str, db_flag: bool = True, params: dict = None) -> list:
+        try:
+            result = self.conn.execute(query, params or {})
+            df = result.get_as_df()
+            if df.empty:
+                return []
+            return df.to_dict('records')
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning("KuzuConnector.execute_query failed: %s", e)
+            return []
+
     def clear(self) -> None:
         self.conn.execute("MATCH (n1)-[rel]->(n2) DELETE rel;")
         self.conn.execute("MATCH (n) DELETE n;")
