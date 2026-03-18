@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 def main():
     parser = argparse.ArgumentParser(description="Build KuzuDB + ChromaDB from full.txt")
     parser.add_argument("--force", action="store_true", help="Rebuild even if already populated")
+    parser.add_argument("--skip-chroma", action="store_true",
+                        help="Skip ChromaDB embedding phase (use if pre-built ChromaDB exists)")
     args = parser.parse_args()
 
     # Load .env if python-dotenv is available
@@ -145,7 +147,7 @@ def main():
         return
 
     need_kuzu = kuzu_count == 0
-    need_chroma = chroma_count == 0
+    need_chroma = chroma_count == 0 and not args.skip_chroma
 
     if not need_kuzu and not need_chroma:
         logger.info("Both stores already populated. Use --force to rebuild.")

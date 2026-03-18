@@ -48,6 +48,38 @@ print('[entrypoint] TComplEx downloaded.')
 "
 fi
 
+BUILD_KG_ARGS=""
+
+# 3.5. Pre-built ChromaDB from HuggingFace (skips ~78h CPU embedding)
+CHROMA_NODES_DIR="${CHROMA_NODES_PATH:-/app/data/graph_structures/vectorized_nodes/default}"
+CHROMA_QUADS_DIR="${CHROMA_QUADS_PATH:-/app/data/graph_structures/vectorized_quadruplets/default}"
+mkdir -p "$CHROMA_NODES_DIR" "$CHROMA_QUADS_DIR"
+if [[ -n "${HF_CHROMA_REPO:-}" ]]; then
+    if [[ ! -f "$CHROMA_NODES_DIR/chroma.sqlite3" || ! -f "$CHROMA_QUADS_DIR/chroma.sqlite3" ]]; then
+        echo "[entrypoint] Downloading pre-built ChromaDB from HF (${HF_CHROMA_REPO})..."
+        python -c "
+import os, tarfile
+from huggingface_hub import hf_hub_download
+repo = '${HF_CHROMA_REPO}'
+token = '${HF_TOKEN:-}' or None
+for fname, dest in [
+    ('vectorized_nodes_default.tar.gz',      '${CHROMA_NODES_DIR}'),
+    ('vectorized_quadruplets_default.tar.gz', '${CHROMA_QUADS_DIR}'),
+]:
+    if not os.path.exists(os.path.join(dest, 'chroma.sqlite3')):
+        f = hf_hub_download(repo_id=repo, filename=fname, repo_type='dataset', token=token)
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        with tarfile.open(f) as t: t.extractall(os.path.dirname(dest))
+        print(f'[entrypoint] {fname} extracted to {dest}')
+print('[entrypoint] ChromaDB ready.')
+"
+        BUILD_KG_ARGS="$BUILD_KG_ARGS --skip-chroma"
+    else
+        echo "[entrypoint] ChromaDB already present — skipping HF download."
+        BUILD_KG_ARGS="$BUILD_KG_ARGS --skip-chroma"
+    fi
+fi
+
 # 4. Build KuzuDB + ChromaDB (always run — build_kg.py is idempotent, skips if already populated)
 # NOTE: KuzuDB expects a FILE path, not a directory — do NOT mkdir the kuzu path itself
 mkdir -p "$(dirname "$KUZU_DIR")"
@@ -80,16 +112,10 @@ except Exception as e:
     fi
 fi
 
-# Ensure ChromaDB persistent directories exist (Railway volumes may be empty on first mount)
-CHROMA_NODES_DIR="${CHROMA_NODES_PATH:-/app/data/graph_structures/vectorized_nodes/default}"
-CHROMA_QUADS_DIR="${CHROMA_QUADS_PATH:-/app/data/graph_structures/vectorized_quadruplets/default}"
-mkdir -p "$CHROMA_NODES_DIR" "$CHROMA_QUADS_DIR"
-
 # Support BUILD_KG_FORCE=1 for manual clean rebuild (e.g. when KuzuDB is polluted)
-BUILD_KG_ARGS=""
 if [[ "${BUILD_KG_FORCE:-0}" == "1" ]]; then
     echo "[entrypoint] BUILD_KG_FORCE=1 — forcing clean rebuild of KuzuDB + ChromaDB..."
-    BUILD_KG_ARGS="--force"
+    BUILD_KG_ARGS="$BUILD_KG_ARGS --force"
 fi
 echo "[entrypoint] Running build_kg.py (idempotent — skips if already populated)..."
 python scripts/build_kg.py $BUILD_KG_ARGS
