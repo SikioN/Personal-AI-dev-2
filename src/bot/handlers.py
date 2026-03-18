@@ -398,7 +398,7 @@ async def cmd_retrain(message: Message):
             "TComplEx недоступен в режиме in\\-memory\\.", parse_mode="MarkdownV2"
         )
         return
-    tkbc_dir = os.environ.get("TKBC_DIR", "")
+    tkbc_dir = os.environ.get("TKBC_DIR") or os.environ.get("TCOMPLEX_DATA_PATH", "")
     if not tkbc_dir or not os.path.isdir(tkbc_dir):
         await message.answer(
             "TKBC\\_DIR не задан или не существует\\.", parse_mode="MarkdownV2"
