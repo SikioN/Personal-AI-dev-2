@@ -336,6 +336,7 @@ async def cmd_graph(message: Message):
 
 @router.message(Command("ingest"))
 async def cmd_ingest(message: Message):
+    logger.info("[/ingest] received from chat_id=%s text=%r", message.chat.id, message.text)
     now = time.monotonic()
     if now - _last_ask.get(message.chat.id, 0) < _ASK_COOLDOWN_SEC:
         await message.answer("Слишком быстро. Подождите несколько секунд.")
@@ -358,7 +359,9 @@ async def cmd_ingest(message: Message):
 
     async with _get_semaphore():
         try:
+            logger.info("[/ingest] semaphore acquired, loading engine...")
             engine, _, kg_model = await asyncio.to_thread(_get_engine_and_navigator)
+            logger.info("[/ingest] engine ready, kg_model=%s", type(kg_model).__name__ if kg_model else None)
             from src.pipelines.ingestion.doc_ingestion_service import DocIngestionService
             # Use production KG path when kg_model is available (even in USE_INMEMORY mode
             # the engine may have a real InMemoryGraph/Kuzu connector under the hood).
@@ -433,6 +436,8 @@ _ALLOWED_EXTENSIONS = {".pdf", ".docx", ".pptx", ".txt"}
 
 @router.message(F.document)
 async def handle_document(message: Message, bot: Bot):
+    logger.info("[document] received from chat_id=%s file=%r", message.chat.id,
+                message.document.file_name if message.document else None)
     doc = message.document
     ext = Path(doc.file_name or "").suffix.lower()
     if ext not in _ALLOWED_EXTENSIONS:
@@ -458,7 +463,9 @@ async def handle_document(message: Message, bot: Bot):
 
         try:
             from src.pipelines.ingestion.doc_ingestion_service import DocIngestionService
+            logger.info("[document] loading engine for %s", save_path)
             engine, _, kg_model = await asyncio.to_thread(_get_engine_and_navigator)
+            logger.info("[document] engine ready, kg_model=%s", type(kg_model).__name__ if kg_model else None)
             service = DocIngestionService(
                 kg_model=kg_model,
                 inmemory_engine=engine if kg_model is None else None,
@@ -470,10 +477,13 @@ async def handle_document(message: Message, bot: Bot):
                     loop,
                 )
 
+            logger.info("[document] waiting for semaphore...")
             async with _get_semaphore():
+                logger.info("[document] semaphore acquired, starting ingest_single_file")
                 res = await asyncio.to_thread(
                     service.ingest_single_file, save_path, None, sync_progress
                 )
+            logger.info("[document] ingest done: added=%s errors=%s", res.get("added"), res.get("errors"))
 
             added = res["added"]
             sample_quads = res.get("quadruplets", [])

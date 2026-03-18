@@ -41,6 +41,14 @@ async def main():
     dp = Dispatcher()
     dp.include_router(router)
 
+    # Delete any stale webhook so polling works (webhook + polling conflict kills updates silently)
+    wh_info = await bot.get_webhook_info()
+    if wh_info.url:
+        logger.warning("Active webhook found (%s) — deleting it so polling works.", wh_info.url)
+        await bot.delete_webhook(drop_pending_updates=False)
+    else:
+        logger.info("No active webhook — polling can start cleanly.")
+
     logger.info("Bot started polling.")
     await dp.start_polling(bot)
 
