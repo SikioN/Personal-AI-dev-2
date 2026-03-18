@@ -36,9 +36,15 @@ async def main():
         logger.warning(f"Engine pre-load failed (will retry on first request): {e}")
 
     from src.bot.handlers import router
+    from src.bot.access import AccessControlMiddleware
+
+    allowed_raw = os.environ.get("ALLOWED_USERS", "*")
+    access_mw = AccessControlMiddleware(allowed_raw)
 
     bot = Bot(token=token, default=DefaultBotProperties())
     dp = Dispatcher()
+    dp.message.middleware(access_mw)
+    dp.callback_query.middleware(access_mw)
     dp.include_router(router)
 
     # Delete any stale webhook so polling works (webhook + polling conflict kills updates silently)

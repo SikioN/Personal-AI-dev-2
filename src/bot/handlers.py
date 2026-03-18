@@ -9,7 +9,10 @@ from pathlib import Path
 from typing import Optional
 from aiogram import Router, F, Bot
 from aiogram.filters import Command, CommandStart
-from aiogram.types import Message, BufferedInputFile
+from aiogram.types import (
+    Message, BufferedInputFile,
+    InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery,
+)
 
 from src.bot.formatters import (
     format_facts, format_answer, format_ask_with_ranked, format_status, format_settings,
@@ -42,24 +45,48 @@ def _get_semaphore() -> asyncio.Semaphore:
 
 
 HELP_TEXT = (
-    "*Personal\\-AI KG QA Navigator*\n\n"
-    "*/ask* `<вопрос>` — полный 7\\-стадийный пайплайн → текстовый ответ\n"
-    "*/facts* `<вопрос>` — полная отладочная трассировка пайплайна\n"
+    "*Команды:*\n"
+    "*/ask* `<вопрос>` — ответ по графу знаний\n"
+    "*/facts* `<вопрос>` — отладочная трассировка пайплайна\n"
     "*/graph* `<вопрос>` — 1\\-hop подграф → PNG\n"
-    "*/settings* — текущие настройки\n"
+    "*/status* — статус системы \\(KuzuDB, ChromaDB, TComplEx, LLM\\)\n"
+    "*/settings* — текущие настройки \\(top\\_k, min\\_confidence\\)\n"
     "*/set top\\_k N* — изменить top\\_k \\(1–15\\)\n"
     "*/set confidence X* — мин\\. confidence \\(0\\.0–1\\.0\\)\n"
-    "*/status* — статус системы\n"
-    "*/ingest* — извлечь факты из документов в extract/new\\_docs/\n"
-    "*/retrain* — переобучить TComplEx \\(только production\\)\n"
-    "*/help* — этот список\n\n"
-    "Для загрузки документа отправьте файл \\(PDF, DOCX, PPTX, TXT\\)\\."
+    "*/ingest* — обработать файлы из папки extract/new\\_docs\n"
+    "*/ingest force* — переработать уже обработанные файлы\n"
+    "*/retrain* — переобучить TComplEx\n"
+    "*/help* — это сообщение\n\n"
+    "Чтобы добавить документ — просто прикрепите файл \\(PDF, DOCX, PPTX, TXT\\)\\. "
+    "Факты извлекутся автоматически\\."
 )
 
 WELCOME_TEXT = (
-    "Привет\\! Я KG QA Navigator — отвечаю на вопросы по графу знаний\\.\n\n"
+    "Привет\\! Я *KG QA Navigator* — отвечаю на вопросы по графу знаний\\.\n\n"
+    "Чтобы добавить документ — просто прикрепите файл \\(PDF, DOCX, PPTX, TXT\\) "
+    "в этот чат\\. Факты извлекутся автоматически и попадут в базу знаний\\.\n\n"
     + HELP_TEXT
 )
+
+
+def main_menu_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="Задать вопрос",        callback_data="menu_ask"),
+            InlineKeyboardButton(text="Помощь",               callback_data="menu_help"),
+        ],
+        [
+            InlineKeyboardButton(text="Отправить файл",       callback_data="menu_upload"),
+            InlineKeyboardButton(text="Переобучить TComplEx", callback_data="menu_retrain_confirm"),
+        ],
+    ])
+
+
+def retrain_confirm_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="Да, начать", callback_data="menu_retrain"),
+        InlineKeyboardButton(text="Отмена",     callback_data="menu_cancel"),
+    ]])
 
 
 def _get_settings(chat_id: int) -> dict:
@@ -76,12 +103,14 @@ def _get_engine_and_navigator():
 
 @router.message(CommandStart())
 async def cmd_start(message: Message):
-    await message.answer(WELCOME_TEXT, parse_mode="MarkdownV2")
+    await message.answer(WELCOME_TEXT, parse_mode="MarkdownV2",
+                         reply_markup=main_menu_keyboard())
 
 
 @router.message(Command("help"))
 async def cmd_help(message: Message):
-    await message.answer(HELP_TEXT, parse_mode="MarkdownV2")
+    await message.answer(HELP_TEXT, parse_mode="MarkdownV2",
+                         reply_markup=main_menu_keyboard())
 
 
 @router.message(Command("status"))
@@ -385,13 +414,19 @@ async def cmd_ingest(message: Message):
             await status_msg.edit_text(f"Ошибка: {_esc(str(e)[:200])}", parse_mode="MarkdownV2")
             return
     use_inmemory = os.environ.get("USE_INMEMORY", "true").lower() in ("1", "true", "yes")
+    added = getattr(stats, "added", 0) if hasattr(stats, "added") else (stats or {}).get("added", 0)
+    retrain_kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="Переобучить TComplEx", callback_data="menu_retrain_confirm")
+    ]]) if added > 0 else None
     await status_msg.edit_text(
-        format_ingest_result(stats, use_inmemory), parse_mode="MarkdownV2"
+        format_ingest_result(stats, use_inmemory),
+        parse_mode="MarkdownV2",
+        reply_markup=retrain_kb,
     )
 
 
-@router.message(Command("retrain"))
-async def cmd_retrain(message: Message):
+async def _do_retrain(message: Message) -> None:
+    """Shared retrain logic used by /retrain command and inline button."""
     use_inmemory = os.environ.get("USE_INMEMORY", "true").lower() in ("1", "true", "yes")
     if use_inmemory:
         await message.answer(
@@ -429,6 +464,42 @@ async def cmd_retrain(message: Message):
     await status_msg.edit_text(
         "TComplEx переобучен и перезагружен\\.", parse_mode="MarkdownV2"
     )
+
+
+@router.message(Command("retrain"))
+async def cmd_retrain(message: Message):
+    await _do_retrain(message)
+
+
+@router.callback_query(F.data.startswith("menu_"))
+async def handle_menu(query: CallbackQuery):
+    await query.answer()
+    action = query.data[5:]  # strip "menu_" prefix
+
+    if action == "ask":
+        await query.message.answer(
+            "Введите вопрос командой: `/ask <вопрос>`", parse_mode="MarkdownV2"
+        )
+    elif action == "help":
+        await query.message.answer(
+            HELP_TEXT, parse_mode="MarkdownV2", reply_markup=main_menu_keyboard()
+        )
+    elif action == "upload":
+        await query.message.answer(
+            "Прикрепите файл \\(PDF, DOCX, PPTX, TXT\\) прямо в этот чат\\.",
+            parse_mode="MarkdownV2",
+        )
+    elif action == "retrain_confirm":
+        await query.message.answer(
+            "Переобучение TComplEx может занять значительное время \\(десятки минут\\)\\.\n"
+            "Продолжить?",
+            parse_mode="MarkdownV2",
+            reply_markup=retrain_confirm_keyboard(),
+        )
+    elif action == "retrain":
+        await _do_retrain(query.message)
+    elif action == "cancel":
+        await query.message.edit_text("Переобучение отменено\\.", parse_mode="MarkdownV2")
 
 
 _ALLOWED_EXTENSIONS = {".pdf", ".docx", ".pptx", ".txt"}
@@ -505,7 +576,10 @@ async def handle_document(message: Message, bot: Bot):
                 total_str = f" \\(показаны 5 из {len(sample_quads)}\\)" if len(sample_quads) > 5 else ""
                 summary += f"\n\n*Примеры извлечённых фактов*{total_str}:\n{sample_text}"
 
-            await status_msg.edit_text(summary, parse_mode="MarkdownV2")
+            retrain_kb = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="Переобучить TComplEx", callback_data="menu_retrain_confirm")
+            ]]) if added > 0 else None
+            await status_msg.edit_text(summary, parse_mode="MarkdownV2", reply_markup=retrain_kb)
         except Exception as ingest_err:
             logger.exception("In-flight ingestion failed")
             await status_msg.edit_text(
