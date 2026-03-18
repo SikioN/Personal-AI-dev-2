@@ -359,11 +359,13 @@ async def cmd_ingest(message: Message):
     async with _get_semaphore():
         try:
             engine, _, kg_model = await asyncio.to_thread(_get_engine_and_navigator)
-            use_inmemory = os.environ.get("USE_INMEMORY", "true").lower() in ("1", "true", "yes")
             from src.pipelines.ingestion.doc_ingestion_service import DocIngestionService
+            # Use production KG path when kg_model is available (even in USE_INMEMORY mode
+            # the engine may have a real InMemoryGraph/Kuzu connector under the hood).
+            # Fall back to simple raw_quads path only when kg_model is None (SimpleInMemoryEngine).
             service = DocIngestionService(
-                kg_model=kg_model if not use_inmemory else None,
-                inmemory_engine=engine if use_inmemory else None,
+                kg_model=kg_model,
+                inmemory_engine=engine if kg_model is None else None,
             )
             input_dir = os.path.join(ROOT_DIR, "extract", "new_docs")
             os.makedirs(input_dir, exist_ok=True)
@@ -457,11 +459,9 @@ async def handle_document(message: Message, bot: Bot):
         try:
             from src.pipelines.ingestion.doc_ingestion_service import DocIngestionService
             engine, _, kg_model = await asyncio.to_thread(_get_engine_and_navigator)
-            use_inmemory = os.environ.get("USE_INMEMORY", "true").lower() in ("1", "true", "yes")
-
             service = DocIngestionService(
-                kg_model=kg_model if not use_inmemory else None,
-                inmemory_engine=engine if use_inmemory else None,
+                kg_model=kg_model,
+                inmemory_engine=engine if kg_model is None else None,
             )
 
             def sync_progress(text: str):

@@ -197,31 +197,33 @@ class DocIngestionService:
                 "Module 'extract' not found. Please ensure the 'extract/' folder is in your PYTHONPATH."
             )
 
-        # Ensure caches are ready
-        _load_processed_manifest()
-        _load_custom_registry()
-        _load_prop_llm_cache()
-
-        if text is None:
-            from extract.extract_quadruplets import read_document
-            text = read_document(filepath)  # fitz/docx/pptx/txt — correct parsing
-            if text is None:
-                logger.warning("[DocIngestionService] Cannot read file: %s", filepath)
-                return {"quadruplets": [], "added": 0, "errors": 1}
-
-        prop_map = fetch_all_wikidata_properties(use_cache=True)
-        llm_caller = self._make_llm_caller()
-
-        llm_backend = os.environ.get("LLM_BACKEND", "deepseek").lower()
-        llm_model = self._get_llm_model(llm_backend)
-        llm_api_key = self._get_llm_api_key(llm_backend)
-        llm_base_url = self._get_llm_base_url(llm_backend)
-
         fname = Path(filepath).name
-        if progress_callback:
-            progress_callback(f"Извлечение фактов из {fname}...")
-
         try:
+            # Ensure caches are ready (inside try so any IO error is caught)
+            _load_processed_manifest()
+            _load_custom_registry()
+            _load_prop_llm_cache()
+
+            if text is None:
+                from extract.extract_quadruplets import read_document
+                text = read_document(filepath)  # fitz/docx/pptx/txt — correct parsing
+                if text is None:
+                    logger.warning("[DocIngestionService] Cannot read file: %s", filepath)
+                    return {"quadruplets": [], "added": 0, "errors": 1}
+                logger.info("[DocIngestionService] Read %s — %d chars", fname, len(text))
+
+            prop_map = fetch_all_wikidata_properties(use_cache=True)
+            llm_caller = self._make_llm_caller()
+
+            llm_backend = os.environ.get("LLM_BACKEND", "deepseek").lower()
+            llm_model = self._get_llm_model(llm_backend)
+            llm_api_key = self._get_llm_api_key(llm_backend)
+            llm_base_url = self._get_llm_base_url(llm_backend)
+
+            logger.info("[DocIngestionService] Using LLM backend=%s model=%s", llm_backend, llm_model)
+            if progress_callback:
+                progress_callback(f"Извлечение фактов из {fname}...")
+
             api_chunk_errors = 0
             if llm_backend == "ollama":
                 raw_quads = extract_with_ollama(text, model=llm_model)
@@ -235,6 +237,9 @@ class DocIngestionService:
                 )
             else:
                 raw_quads = extract_with_ollama(text, model=llm_model)
+
+            logger.info("[DocIngestionService] LLM returned %d raw quads, %d chunk errors",
+                        len(raw_quads), api_chunk_errors)
 
             built = []
             for raw in raw_quads:
@@ -256,7 +261,7 @@ class DocIngestionService:
             }
 
         except Exception as e:
-            logger.error("Failed to process %s: %s", filepath, e)
+            logger.error("[DocIngestionService] Failed to process %s: %s", filepath, e, exc_info=True)
             return {"quadruplets": [], "added": 0, "errors": 1}
 
     def ingest_single_file(
