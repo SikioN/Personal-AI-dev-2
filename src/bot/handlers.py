@@ -9,9 +9,12 @@ from pathlib import Path
 from typing import Optional
 from aiogram import Router, F, Bot
 from aiogram.filters import Command, CommandStart
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
     Message, BufferedInputFile,
     InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery,
+    ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove,
 )
 
 from src.bot.formatters import (
@@ -69,17 +72,26 @@ WELCOME_TEXT = (
 )
 
 
-def main_menu_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="Задать вопрос",        callback_data="menu_ask"),
-            InlineKeyboardButton(text="Помощь",               callback_data="menu_help"),
+class BotStates(StatesGroup):
+    waiting_for_question = State()
+
+
+# Labels used for reply keyboard buttons (must match exactly in text handlers below)
+_BTN_ASK     = "Задать вопрос"
+_BTN_HELP    = "Помощь"
+_BTN_UPLOAD  = "Отправить файл"
+_BTN_RETRAIN = "Переобучить TComplEx"
+
+
+def main_menu_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=_BTN_ASK),     KeyboardButton(text=_BTN_HELP)],
+            [KeyboardButton(text=_BTN_UPLOAD),  KeyboardButton(text=_BTN_RETRAIN)],
         ],
-        [
-            InlineKeyboardButton(text="Отправить файл",       callback_data="menu_upload"),
-            InlineKeyboardButton(text="Переобучить TComplEx", callback_data="menu_retrain_confirm"),
-        ],
-    ])
+        resize_keyboard=True,
+        persistent=True,
+    )
 
 
 def retrain_confirm_keyboard() -> InlineKeyboardMarkup:
@@ -102,16 +114,89 @@ def _get_engine_and_navigator():
 
 
 @router.message(CommandStart())
-async def cmd_start(message: Message):
+async def cmd_start(message: Message, state: FSMContext):
+    await state.clear()
     await message.answer(WELCOME_TEXT, parse_mode="MarkdownV2",
                          reply_markup=main_menu_keyboard())
 
 
 @router.message(Command("help"))
-async def cmd_help(message: Message):
+async def cmd_help(message: Message, state: FSMContext):
+    await state.clear()
     await message.answer(HELP_TEXT, parse_mode="MarkdownV2",
                          reply_markup=main_menu_keyboard())
 
+
+# ── Reply keyboard menu handlers ──────────────────────────────────────────────
+
+@router.message(F.text == _BTN_HELP)
+async def menu_help(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer(HELP_TEXT, parse_mode="MarkdownV2")
+
+
+@router.message(F.text == _BTN_UPLOAD)
+async def menu_upload(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer(
+        "Прикрепите файл \\(PDF, DOCX, PPTX, TXT\\) прямо в этот чат\\.",
+        parse_mode="MarkdownV2",
+    )
+
+
+@router.message(F.text == _BTN_RETRAIN)
+async def menu_retrain(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer(
+        "Переобучение TComplEx может занять значительное время \\(десятки минут\\)\\.\n"
+        "Продолжить?",
+        parse_mode="MarkdownV2",
+        reply_markup=retrain_confirm_keyboard(),
+    )
+
+
+@router.message(F.text == _BTN_ASK)
+async def menu_ask(message: Message, state: FSMContext):
+    await state.set_state(BotStates.waiting_for_question)
+    await message.answer("Введите ваш вопрос:")
+
+
+@router.message(BotStates.waiting_for_question)
+async def handle_question_input(message: Message, state: FSMContext):
+    await state.clear()
+    query = (message.text or "").strip()
+    if not query:
+        await message.answer("Вопрос не может быть пустым\\.", parse_mode="MarkdownV2")
+        return
+
+    now = time.monotonic()
+    if now - _last_ask.get(message.chat.id, 0) < _ASK_COOLDOWN_SEC:
+        await message.answer("Слишком быстро. Подождите несколько секунд.")
+        return
+    _last_ask[message.chat.id] = now
+
+    await message.answer("Анализирую граф, подождите...")
+    s = _get_settings(message.chat.id)
+    async with _get_semaphore():
+        try:
+            engine, _, _ = await asyncio.to_thread(_get_engine_and_navigator)
+            results = await asyncio.to_thread(engine.get_ranked_results, query, s['top_k'])
+            answer = await asyncio.to_thread(engine.ask, query, s['top_k'])
+        except Exception as e:
+            logger.exception("Error in question input handler")
+            await message.answer(f"Ошибка: {_esc(str(e))}", parse_mode="MarkdownV2")
+            return
+
+    if answer is None:
+        await message.answer("Произошла ошибка при обращении к LLM\\. Попробуйте позже\\.",
+                             parse_mode="MarkdownV2")
+        return
+
+    await message.answer(format_ask_with_ranked(answer, results, s['top_k']),
+                         parse_mode="MarkdownV2")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 @router.message(Command("status"))
 async def cmd_status(message: Message):
@@ -476,20 +561,7 @@ async def handle_menu(query: CallbackQuery):
     await query.answer()
     action = query.data[5:]  # strip "menu_" prefix
 
-    if action == "ask":
-        await query.message.answer(
-            "Введите вопрос командой: `/ask <вопрос>`", parse_mode="MarkdownV2"
-        )
-    elif action == "help":
-        await query.message.answer(
-            HELP_TEXT, parse_mode="MarkdownV2", reply_markup=main_menu_keyboard()
-        )
-    elif action == "upload":
-        await query.message.answer(
-            "Прикрепите файл \\(PDF, DOCX, PPTX, TXT\\) прямо в этот чат\\.",
-            parse_mode="MarkdownV2",
-        )
-    elif action == "retrain_confirm":
+    if action == "retrain_confirm":
         await query.message.answer(
             "Переобучение TComplEx может занять значительное время \\(десятки минут\\)\\.\n"
             "Продолжить?",
