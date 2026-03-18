@@ -472,10 +472,9 @@ async def handle_document(message: Message, bot: Bot):
             )
 
             def sync_progress(text: str):
-                asyncio.run_coroutine_threadsafe(
-                    status_msg.edit_text(_esc(text), parse_mode="MarkdownV2"),
-                    loop,
-                )
+                async def _do() -> None:
+                    await status_msg.edit_text(_esc(text), parse_mode="MarkdownV2")
+                asyncio.run_coroutine_threadsafe(_do(), loop)
 
             logger.info("[document] waiting for semaphore...")
             async with _get_semaphore():
