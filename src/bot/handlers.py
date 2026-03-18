@@ -55,7 +55,27 @@ HELP_TEXT = (
     "*Обновить модель* — после загрузки новых документов запустите обновление, "
     "чтобы бот учёл новые данные при ответах\\.\n\n"
     "_Для просмотра статуса системы используйте_ /status\\.\n"
-    "_Для настройки параметров используйте_ /settings\\."
+    "_Для полного списка команд используйте_ /commands\\."
+)
+
+COMMANDS_TEXT = (
+    "*Все доступные команды:*\n\n"
+    "*Основные*\n"
+    "*/ask* `<вопрос>` — ответ по базе знаний\n"
+    "*/graph* `<вопрос>` — визуализация связей в виде графа \\(PNG\\)\n"
+    "*/facts* `<вопрос>` — подробная трассировка: какие факты нашёл и почему\n"
+    "*/status* — состояние системы и базы знаний\n\n"
+    "*Документы и обучение*\n"
+    "*/ingest* — обработать документы из папки new\\_docs\n"
+    "*/ingest force* — переобработать уже загруженные документы\n"
+    "*/retrain* — обновить модель вручную\n\n"
+    "*Настройки*\n"
+    "*/settings* — текущие параметры поиска\n"
+    "*/set top\\_k N* — количество результатов \\(1–15, по умолчанию 5\\)\n"
+    "*/set confidence X* — минимальный порог уверенности \\(0\\.0–1\\.0\\)\n\n"
+    "*Отладка*\n"
+    "*/dbg* `<вопрос>` — расширенный отладочный вывод\n"
+    "*/help* — краткая справка"
 )
 
 WELCOME_TEXT = (
@@ -125,6 +145,12 @@ async def cmd_help(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(HELP_TEXT, parse_mode="MarkdownV2",
                          reply_markup=main_menu_keyboard())
+
+
+@router.message(Command("commands"))
+async def cmd_commands(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer(COMMANDS_TEXT, parse_mode="MarkdownV2")
 
 
 # ── Reply keyboard menu handlers ──────────────────────────────────────────────
