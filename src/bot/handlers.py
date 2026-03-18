@@ -48,26 +48,26 @@ def _get_semaphore() -> asyncio.Semaphore:
 
 
 HELP_TEXT = (
-    "*Команды:*\n"
-    "*/ask* `<вопрос>` — ответ по графу знаний\n"
-    "*/facts* `<вопрос>` — отладочная трассировка пайплайна\n"
-    "*/graph* `<вопрос>` — 1\\-hop подграф → PNG\n"
-    "*/status* — статус системы \\(KuzuDB, ChromaDB, TComplEx, LLM\\)\n"
-    "*/settings* — текущие настройки \\(top\\_k, min\\_confidence\\)\n"
-    "*/set top\\_k N* — изменить top\\_k \\(1–15\\)\n"
-    "*/set confidence X* — мин\\. confidence \\(0\\.0–1\\.0\\)\n"
-    "*/ingest* — обработать файлы из папки extract/new\\_docs\n"
-    "*/ingest force* — переработать уже обработанные файлы\n"
-    "*/retrain* — переобучить TComplEx\n"
-    "*/help* — это сообщение\n\n"
-    "Чтобы добавить документ — просто прикрепите файл \\(PDF, DOCX, PPTX, TXT\\)\\. "
-    "Факты извлекутся автоматически\\."
+    "*Что умеет бот:*\n\n"
+    "*Задать вопрос* — введите любой вопрос, бот найдёт ответ в базе знаний\\.\n\n"
+    "*Загрузить документ* — прикрепите файл \\(PDF, DOCX, PPTX, TXT\\), "
+    "бот автоматически извлечёт факты и добавит их в базу\\.\n\n"
+    "*Обновить модель* — после загрузки новых документов запустите обновление, "
+    "чтобы бот учёл новые данные при ответах\\.\n\n"
+    "_Для просмотра статуса системы используйте_ /status\\.\n"
+    "_Для настройки параметров используйте_ /settings\\."
 )
 
 WELCOME_TEXT = (
-    "Привет\\! Я *KG QA Navigator* — отвечаю на вопросы по графу знаний\\.\n\n"
-    "Чтобы добавить документ — просто прикрепите файл \\(PDF, DOCX, PPTX, TXT\\) "
-    "в этот чат\\. Факты извлекутся автоматически и попадут в базу знаний\\.\n\n"
+    "Добро пожаловать\\!\n\n"
+    "Я корпоративный ассистент по базе знаний\\. "
+    "Отвечаю на вопросы по загруженным документам и данным компании\\.\n\n"
+    "Как начать:\n"
+    "— Нажмите *Задать вопрос* и введите интересующий вас вопрос\\.\n"
+    "— Чтобы добавить новые материалы — нажмите *Загрузить документ* "
+    "или просто прикрепите файл в чат\\.\n"
+    "— После загрузки документов нажмите *Обновить модель*, "
+    "чтобы бот начал использовать новые данные\\.\n\n"
     + HELP_TEXT
 )
 
@@ -79,8 +79,8 @@ class BotStates(StatesGroup):
 # Labels used for reply keyboard buttons (must match exactly in text handlers below)
 _BTN_ASK     = "Задать вопрос"
 _BTN_HELP    = "Помощь"
-_BTN_UPLOAD  = "Отправить файл"
-_BTN_RETRAIN = "Переобучить TComplEx"
+_BTN_UPLOAD  = "Загрузить документ"
+_BTN_RETRAIN = "Обновить модель"
 
 
 def main_menu_keyboard() -> ReplyKeyboardMarkup:
@@ -139,7 +139,8 @@ async def menu_help(message: Message, state: FSMContext):
 async def menu_upload(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(
-        "Прикрепите файл \\(PDF, DOCX, PPTX, TXT\\) прямо в этот чат\\.",
+        "Прикрепите файл \\(PDF, DOCX, PPTX, TXT\\) прямо в этот чат\\. "
+        "Факты извлекутся автоматически\\.",
         parse_mode="MarkdownV2",
     )
 
@@ -148,8 +149,8 @@ async def menu_upload(message: Message, state: FSMContext):
 async def menu_retrain(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(
-        "Переобучение TComplEx может занять значительное время \\(десятки минут\\)\\.\n"
-        "Продолжить?",
+        "Обновление модели позволит боту учитывать недавно загруженные документы при ответах\\.\n\n"
+        "Процесс может занять несколько минут\\. Продолжить?",
         parse_mode="MarkdownV2",
         reply_markup=retrain_confirm_keyboard(),
     )
@@ -501,7 +502,7 @@ async def cmd_ingest(message: Message):
     use_inmemory = os.environ.get("USE_INMEMORY", "true").lower() in ("1", "true", "yes")
     added = getattr(stats, "added", 0) if hasattr(stats, "added") else (stats or {}).get("added", 0)
     retrain_kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="Переобучить TComplEx", callback_data="menu_retrain_confirm")
+        InlineKeyboardButton(text="Обновить модель", callback_data="menu_retrain_confirm")
     ]]) if added > 0 else None
     await status_msg.edit_text(
         format_ingest_result(stats, use_inmemory),
@@ -547,7 +548,8 @@ async def _do_retrain(message: Message) -> None:
             await status_msg.edit_text(f"Ошибка переобучения: {_esc(str(e)[:200])}")
             return
     await status_msg.edit_text(
-        "TComplEx переобучен и перезагружен\\.", parse_mode="MarkdownV2"
+        "Модель обновлена\\. Бот теперь учитывает новые данные при ответах\\.",
+        parse_mode="MarkdownV2",
     )
 
 
@@ -563,8 +565,8 @@ async def handle_menu(query: CallbackQuery):
 
     if action == "retrain_confirm":
         await query.message.answer(
-            "Переобучение TComplEx может занять значительное время \\(десятки минут\\)\\.\n"
-            "Продолжить?",
+            "Обновление модели позволит боту учитывать недавно загруженные документы при ответах\\.\n\n"
+            "Процесс может занять несколько минут\\. Продолжить?",
             parse_mode="MarkdownV2",
             reply_markup=retrain_confirm_keyboard(),
         )
@@ -649,7 +651,7 @@ async def handle_document(message: Message, bot: Bot):
                 summary += f"\n\n*Примеры извлечённых фактов*{total_str}:\n{sample_text}"
 
             retrain_kb = InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="Переобучить TComplEx", callback_data="menu_retrain_confirm")
+                InlineKeyboardButton(text="Обновить модель", callback_data="menu_retrain_confirm")
             ]]) if added > 0 else None
             await status_msg.edit_text(summary, parse_mode="MarkdownV2", reply_markup=retrain_kb)
         except Exception as ingest_err:
