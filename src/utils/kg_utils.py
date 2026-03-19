@@ -85,11 +85,17 @@ class KGEntityMapper:
         if key in self._name2id_cache:
             return self._name2id_cache[key]
 
+        # Sort by length: shortest matches first (prefer "United States" over "United States senator")
         result = self._db.execute_query(
-            'MATCH (n) WHERE lower(n.name) = lower($name) RETURN n.str_id AS str_id LIMIT 1',
+            'MATCH (n) WHERE lower(n.name) = lower($name) RETURN n.str_id AS str_id, n.name AS name LIMIT 10',
             params={'name': name}
         )
-        str_id = result[0]['str_id'] if result else None
+        if result:
+            result.sort(key=lambda x: len(x.get('name', '')))
+            str_id = result[0]['str_id']
+        else:
+            str_id = None
+
         self._name2id_cache[key] = str_id
         return str_id
 

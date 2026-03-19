@@ -156,18 +156,22 @@ class ScoringStage:
             top_scored = [c[1] for c in (timed[:5] if is_first else timed[-5:])]
 
         # P3: gap-based selection — notebook-aligned
-        # temporal_bucket passes through directly (no boost);
-        # gap-select only extra facts outside the bucket
         tb_ids = {q.id for q in retrieval.temporal_bucket}
+        
+        # Ensure temporal_bucket quads are scored even if they dropped out of top_scored
+        scored_map = {r.quad.id: r for r in scored}
+        tb_results = [scored_map[qid] for qid in tb_ids if qid in scored_map]
+        
         extra_scored = [r for r in top_scored if r.quad.id not in tb_ids]
         n_max_extra = max(self.config.min_facts,
-                          self.config.max_facts - len(retrieval.temporal_bucket))
+                          self.config.max_facts - len(tb_results))
+        
         gap_selected = select_by_confidence_gap(
             extra_scored,
             min_f=self.config.min_facts,
             max_f=n_max_extra,
             gap=self.config.confidence_gap,
         )
-        selected_quads = retrieval.temporal_bucket + [r.quad for r in gap_selected]
+        selected_quads = [r.quad for r in tb_results] + [r.quad for r in gap_selected]
 
         return ScoringResult(all_scored=scored, selected_quads=selected_quads)
