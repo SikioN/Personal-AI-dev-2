@@ -445,12 +445,19 @@ class HybridRetriever:
         for ent in ext.entities:
             res_name, wd_id = self.resolve_entity(ent)
             resolved_entities.append((ent, res_name, wd_id))
+            
+            # DBG: Detailed resolution info
+            src = "DB"
+            if wd_id and hasattr(self.mapper, 'fallback_name2id') and self.mapper.fallback_name2id.get(ent.lower()) == wd_id:
+                src = "RAM"
+            print(f"  - Resolved: '{ent}' -> '{res_name}' ({wd_id}) [via {src}]")
+
             batch = self._get_graph_candidates(
                 [wd_id] if wd_id else [],
                 [res_name]
             )
             graph_quads.extend(batch)
-            print(f'  {len(batch)} graph quads for "{res_name}" (wd_id={wd_id})')
+            print(f"    Found {len(batch)} quads in graph for '{res_name}'")
 
         # Deduplicate graph quads
         seen_ids: set = set()

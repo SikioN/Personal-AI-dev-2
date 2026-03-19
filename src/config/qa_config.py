@@ -57,8 +57,8 @@ class QAConfig:
 
     # Model paths
     finetuned_model_path: str = 'models/wikidata_finetuned_remote/wikidata_finetuned'
-    tcomplex_checkpoint: str = 'models/tcomplex_extended.ckpt'
-    tcomplex_data_path: str = 'data/wikidata_extended/kg/tkbc_processed_data/wikidata_extended/'
+    tcomplex_checkpoint: str = 'models/cronkgqa/tcomplex.ckpt'
+    tcomplex_data_path: str = 'wikidata_big/kg/tkbc_processed_data/wikidata_big/'
 
     # LLM generation system prompt
     anon_system_prompt: str = _ANON_SYS_DEFAULT

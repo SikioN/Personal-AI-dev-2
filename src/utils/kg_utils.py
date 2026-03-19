@@ -108,22 +108,23 @@ class KGEntityMapper:
         if key in self._name2id_cache:
             return self._name2id_cache[key]
 
-        # 1. DB Lookup (Shortest match priority)
-        result = self._db.execute_query(
-            'MATCH (n) WHERE lower(n.name) = lower($name) RETURN n.str_id AS str_id, n.name AS name LIMIT 10',
-            params={'name': name}
-        )
-        if result:
-            result.sort(key=lambda x: len(x.get('name', '')))
-            str_id = result[0]['str_id']
-        else:
-            str_id = None
-
-        # 2. Hybrid Fallback (In-memory dicts from text files)
-        if not str_id and hasattr(self, 'fallback_name2id'):
+        # 1. Hybrid Fallback (In-memory dicts from text files) — Authoritative Ground Truth
+        str_id = None
+        if hasattr(self, 'fallback_name2id'):
             str_id = self.fallback_name2id.get(key)
             if str_id:
-                print(f"[KGEntityMapper] Found '{name}' via hybrid fallback: {str_id}")
+                # print(f"[KGEntityMapper] Found '{name}' via hybrid fallback: {str_id}")
+                pass
+
+        # 2. DB Lookup — Fallback for entities not in text files
+        if not str_id:
+            result = self._db.execute_query(
+                'MATCH (n) WHERE lower(n.name) = lower($name) RETURN n.str_id AS str_id, n.name AS name LIMIT 10',
+                params={'name': name}
+            )
+            if result:
+                result.sort(key=lambda x: len(x.get('name', '')))
+                str_id = result[0]['str_id']
 
         self._name2id_cache[key] = str_id
         return str_id
@@ -137,16 +138,19 @@ class KGEntityMapper:
             cached = self._id2name_cache[str_id]
             return cached if cached != str_id else None
 
-        result = self._db.execute_query(
-            'MATCH (n) WHERE n.str_id = $str_id RETURN n.name AS name LIMIT 1',
-            params={'str_id': str_id}
-        )
-        name = result[0]['name'] if result else None
-        
-        # Hybrid fallback
-        if not name and hasattr(self, 'fallback_id2name'):
+        name = None
+        # 1. Hybrid Fallback (In-memory dicts from text files) — Authoritative Ground Truth
+        if hasattr(self, 'fallback_id2name'):
             name = self.fallback_id2name.get(str_id)
 
+        # 2. DB Lookup — Fallback for entities not in text files
+        if not name:
+            result = self._db.execute_query(
+                'MATCH (n) WHERE n.str_id = $str_id RETURN n.name AS name LIMIT 1',
+                params={'str_id': str_id}
+            )
+            name = result[0]['name'] if result else None
+        
         self._id2name_cache[str_id] = name if name else str_id
         return name
 

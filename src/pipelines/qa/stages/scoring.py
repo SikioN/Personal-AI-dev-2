@@ -143,6 +143,16 @@ class ScoringStage:
             scored.append(ScoredResult(quad=quad, conf=conf, e5=e5, tp=tp, tl=tl))
 
         scored.sort(key=lambda x: x.conf, reverse=True)
+        
+        # DBG: Details on top candidates
+        if hasattr(self.config, 'debug') and self.config.debug:
+            print(f"  [SCORE] Final weights (alpha={alpha:.2f}, use_t={use_tcomplex}):")
+            for i, r in enumerate(scored[:10]):
+                sn = r.quad.start_node.name
+                rel = r.quad.relation.name
+                en = r.quad.end_node.name
+                print(f"    {i+1}. [{r.conf:.3f}] E5={r.e5:.3f} T={r.tp:.3f} tl={r.tl:.1f} | {sn} --[{rel}]--> {en}")
+
         top_scored = scored[:retrieval.search_k]
 
         # first_last post-sort by year
