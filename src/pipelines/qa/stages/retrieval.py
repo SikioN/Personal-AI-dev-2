@@ -508,9 +508,22 @@ class HybridRetriever:
         if ext.q_type == 'time_join' and resolved_time:
             try:
                 t_int = int(resolved_time)
-                temporal_bucket = self._build_temporal_bucket(unique_candidates, t_int)
+                # 2.8: Force-fetch all neighbors for time_join bucket (notebook alignment)
+                # This ensures we don't miss "LBJ was president" just because it's not semantically
+                # close to "Nabokov Nobel Prize".
+                bucket_candidates = unique_candidates
+                if len(ext.entities) > 0:
+                    # Fetch extra neighbors specifically for the bucket
+                    # 2.8: use local resolved_entities instead of uninstantiated retrieval object
+                    extra_ids = [e[2] for e in resolved_entities if e[2]]
+                    if extra_ids:
+                        # Limit to 2000 to avoid OOM or slow DB response
+                        extra_graph = self._get_graph_candidates(extra_ids, [])[:2000]
+                        bucket_candidates = list({q.id: q for q in (unique_candidates + extra_graph)}.values())
+                
+                temporal_bucket = self._build_temporal_bucket(bucket_candidates, t_int)
                 search_k = max(search_k, 20)
-                print(f'  time_join bucket: {len(temporal_bucket)} quads @ {resolved_time}')
+                print(f'  time_join bucket entries: {len(temporal_bucket)} quads @ {resolved_time}')
             except (ValueError, TypeError):
                 pass
 
