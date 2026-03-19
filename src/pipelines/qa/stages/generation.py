@@ -111,7 +111,7 @@ class GenerationStage:
 
             raw_ans = self.llm.generate(user_msg, system=self.config.anon_system_prompt)
             
-            if extraction.debug:
+            if hasattr(self.config, 'debug') and self.config.debug:
                 print(f"  [GEN] raw_llm_output={raw_ans!r}")
                 print(f"  [GEN] context_used (lines)={len(ctx.splitlines())}")
 

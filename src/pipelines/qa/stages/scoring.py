@@ -167,44 +167,36 @@ class ScoringStage:
 
         # P3: Gap-based selection (replaces LLM fact-selection)
         # 2.4: temporal_bucket facts get a minimum confidence boost so they are not
-        # systematically pushed to the tail during gap-based selection
-        tb_scored = []
-        tb_ids = {q.id for q in retrieval.temporal_bucket}
+        # 3. Final Selection: Sacred Temporal Bucket + Gap-selected Extra Candidates
+        # Mirroring notebook logic: TB is ALWAYS prepended, gap filter only applies to the rest.
         
-        # Ensure temporal_bucket quads are scored even if they dropped out of top_scored
-        scored_map = {r.quad.id: r for r in scored}
-        for qid in tb_ids:
-            if qid in scored_map:
-                r = scored_map[qid]
-                # Boost confidence: temporal facts are relevant by construction (HOP 1)
+        # Identify TB quads and boost them
+        tb_quad_ids = {q.id for q in retrieval.temporal_bucket}
+        tb_scored = []
+        for r in scored:
+            if r.quad.id in tb_quad_ids:
                 r.conf = max(0.55, r.conf)
                 tb_scored.append(r)
-            else:
-                # If not in candidates (unlikely), still add it with a baseline score
-                # Note: 'candidates' comes from unique_candidates which includes tb
-                pass
 
-        # Mix them with top-scored candidates from ANN/Graph
-        combined = sorted(
-            tb_scored + top_scored,
-            key=lambda x: x.conf,
-            reverse=True,
-        )
+        # Get extra candidates not in TB
+        extra_scored = [r for r in top_scored if r.quad.id not in tb_quad_ids]
         
-        # Unique by quad.id (as tb might be in top_scored already)
-        seen_final = set()
-        unique_combined = []
-        for r in combined:
-            if r.quad.id not in seen_final:
-                unique_combined.append(r)
-                seen_final.add(r.quad.id)
-
-        selected_scored = select_by_confidence_gap(
-            unique_combined,
-            min_f=self.config.min_facts,
-            max_f=self.config.max_facts,
+        # Apply gap selection only to EXTRA candidates
+        # We limit extra facts to ensure total doesn't exceed max_facts
+        remaining_slots = max(2, self.config.max_facts - len(tb_scored))
+        selected_extra = select_by_confidence_gap(
+            extra_scored,
+            min_f=min(self.config.min_facts, remaining_slots),
+            max_f=remaining_slots,
             gap=self.config.confidence_gap,
         )
-        selected_quads = [r.quad for r in selected_scored]
+
+        # Final list: TB (Sacred) + Selected Extra
+        selected_quads = [r.quad for r in tb_scored] + [r.quad for r in selected_extra]
+
+        if hasattr(self.config, 'debug') and self.config.debug:
+            print(f"  [SCORE] Final quads selected: {len(selected_quads)}")
+            for q in selected_quads[:5]:
+                print(f"    - {q}")
 
         return ScoringResult(all_scored=scored, selected_quads=selected_quads)

@@ -150,6 +150,9 @@ class HybridRetriever:
                             if q.id not in seen:
                                 quads.append(q)
                                 seen.add(q.id)
+                                if hasattr(self.config, 'debug') and self.config.debug:
+                                    if len(quads) <= 5:
+                                        print(f"      [RET] Graph quad: {q}")
                     except Exception as e:
                         logger.warning(
                             "[_get_graph_candidates] KuzuDB str_id query failed for %s: %s", mid, e
