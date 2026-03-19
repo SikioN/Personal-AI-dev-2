@@ -27,10 +27,33 @@ class KGEntityMapper:
                        or a file-system path string (legacy file mode).
         :param cache_size: Max entries per LRU cache (Neo4j mode only).
         """
+        self._extra_kg_path = None
         if isinstance(source, str):
             self._init_from_files(source)
         else:
             self._init_from_neo4j(source, cache_size)
+            # Check for optional file fallback if env var is set
+            ext_path = os.environ.get('KG_DATA_PATH')
+            if ext_path and os.path.isdir(ext_path):
+                print(f"[KGEntityMapper] Loading optional file-based fallback from {ext_path}")
+                self._load_fallback_files(ext_path)
+
+    def _load_fallback_files(self, kg_path: str) -> None:
+        """Load entity/relation files into memory for fallback lookups."""
+        self.fallback_id2name: dict = {}
+        self.fallback_name2id: dict = {}
+        for filename in ("wd_id2entity_text.txt", "wd_id2relation_text.txt"):
+            fpath = os.path.join(kg_path, filename)
+            if os.path.exists(fpath):
+                with open(fpath, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        parts = line.strip().split('\t')
+                        if len(parts) >= 2:
+                            ent_id, name = parts[0], parts[1]
+                            self.fallback_id2name[ent_id] = name
+                            self.fallback_name2id[name.lower()] = ent_id
+            else:
+                print(f"[KGEntityMapper] Fallback file not found: {fpath}")
 
     # ------------------------------------------------------------------
     # Init helpers
@@ -85,7 +108,7 @@ class KGEntityMapper:
         if key in self._name2id_cache:
             return self._name2id_cache[key]
 
-        # Sort by length: shortest matches first (prefer "United States" over "United States senator")
+        # 1. DB Lookup (Shortest match priority)
         result = self._db.execute_query(
             'MATCH (n) WHERE lower(n.name) = lower($name) RETURN n.str_id AS str_id, n.name AS name LIMIT 10',
             params={'name': name}
@@ -95,6 +118,12 @@ class KGEntityMapper:
             str_id = result[0]['str_id']
         else:
             str_id = None
+
+        # 2. Hybrid Fallback (In-memory dicts from text files)
+        if not str_id and hasattr(self, 'fallback_name2id'):
+            str_id = self.fallback_name2id.get(key)
+            if str_id:
+                print(f"[KGEntityMapper] Found '{name}' via hybrid fallback: {str_id}")
 
         self._name2id_cache[key] = str_id
         return str_id
@@ -113,6 +142,11 @@ class KGEntityMapper:
             params={'str_id': str_id}
         )
         name = result[0]['name'] if result else None
+        
+        # Hybrid fallback
+        if not name and hasattr(self, 'fallback_id2name'):
+            name = self.fallback_id2name.get(str_id)
+
         self._id2name_cache[str_id] = name if name else str_id
         return name
 

@@ -312,50 +312,64 @@ class HybridRetriever:
     def _resolve_hop1_time(
         self, anchor_ent_id: str, anchor_event: str, question: str
     ) -> Optional[str]:
-        """
-        Resolve the year of an anchor event via KGNavigator + embedding similarity.
-        Encodes anchor_event text once; ranks stored quad embeddings from ChromaDB.
-        """
+        """Resolves the year of an anchor event via KG neighbors and semantic ranking."""
         try:
-            hop_quads = self._get_graph_candidates([anchor_ent_id], [])[:15]
+            # 1. Fetch larger neighborhood (100 quads) to find specific events
+            hop_quads = self._get_graph_candidates([anchor_ent_id], [])[:100]
             if not hop_quads:
                 return None
 
+            # 2. Semantic ranking
+            top_quads = []
             embedder = self.kg_model.embeddings_struct.embedder
-            # Single SentenceTransformer call in the retrieval path
             query_vec = embedder.encode_queries(['query: ' + anchor_event])[0]
-
             emb_struct = self.kg_model.embeddings_struct
+            
             if hasattr(emb_struct, 'vectordbs') and 'quadruplets' in emb_struct.vectordbs:
                 qv_norm = np.linalg.norm(query_vec)
                 rel_to_quads: dict = defaultdict(list)
                 for q in hop_quads:
                     rel_to_quads[q.relation.id].append(q)
+                
                 instances = emb_struct.vectordbs['quadruplets'].read(
                     list(rel_to_quads.keys()), includes=['embeddings'])
+                
                 ranked = []
                 for inst in instances:
-                    if inst.embedding is None:
-                        continue
+                    if inst.embedding is None: continue
                     emb = np.array(inst.embedding)
                     sim = float(np.dot(query_vec, emb) / (qv_norm * np.linalg.norm(emb) + 1e-9))
                     for q in rel_to_quads.get(inst.id, []):
                         ranked.append((sim, q))
+                
                 ranked.sort(key=lambda x: x[0], reverse=True)
-                top_quads = [q for _, q in ranked[:15]]
+                top_quads = [q for _, q in ranked[:20]]
             else:
-                top_quads = hop_quads[:15]
+                top_quads = hop_quads[:20]
 
-            ctx = '\n'.join(QuadrupletCreator.stringify(q)[1] for q in top_quads)
-            raw = self.llm.generate(
-                f"FACTS:\n{ctx}\n\nExtract ONLY the 4-digit YEAR for "
-                f"'{anchor_event}' of the anchor entity:"
-            ).strip()
+            # 3. LLM Extract Year with improved prompt
+            from src.utils.data_structs import QuadrupletCreator
+            ctx = '\n'.join(f"- {QuadrupletCreator.stringify(q)[1]}" for q in top_quads)
+            
+            prompt = (
+                f"FACTS about the entity:\n{ctx}\n\n"
+                f"Based ONLY on these facts, what is the 4-digit YEAR when the "
+                f"entity was '{anchor_event}'?\n"
+                f"Question Context: {question}\n"
+                f"Output ONLY the year (e.g., 1961), or NULL if not found."
+            )
+            
+            raw = self.llm.generate(prompt).strip()
+            # 5.1: debug logging to trace HOP 1 hallucinations
+            if hasattr(self.config, 'debug') and self.config.debug:
+                print(f"  [HOP 1] raw_llm_output={raw!r}")
+                
             m = re.search(r'(\d{4})', raw)
             if m:
                 return m.group(1)
         except Exception as e:
-            print(f"WARNING: [HybridRetriever] HOP 1 failed: {e}")
+            # 5.1: capture HOP 1 failures specifically
+            logger.warning("[HybridRetriever] HOP 1 failed for %s: %s", anchor_ent_id, e)
         return None
 
     # ------------------------------------------------------------------
