@@ -118,7 +118,7 @@ class HybridRetriever:
     # Graph candidates (Neo4j via KGNavigator)
     # ------------------------------------------------------------------
 
-    def _get_graph_candidates(self, wd_ids: List[str], names: List[str]) -> List[Quadruplet]:
+    def _get_graph_candidates(self, wd_ids: List[str], names: List[str], rel_query: str = "") -> List[Quadruplet]:
         """Graph candidate retrieval — supports KuzuDB, Neo4j, and InMemory connectors.
 
         KuzuDB: str_id = md5(name+props), NOT the wd_id. Query by prop['wd_id'] MAP key.
@@ -137,15 +137,40 @@ class HybridRetriever:
         if hasattr(connector, 'conn'):
             seen: set = set()
             quads: List[Quadruplet] = []
+            
+            # Sanitization for rel_query
+            rel_query_sanitized = rel_query.strip() if rel_query else ""
+            
             for mid in wd_ids:
-                for cypher in (
+                # If we have a relation query, we try to be specific first
+                cyphers = []
+                if rel_query_sanitized:
+                    cyphers.append(
+                        "MATCH (n1)-[rel]->(n2) WHERE n1.str_id = $wid "
+                        "AND lower(rel.name) CONTAINS lower($rel) "
+                        "RETURN n1, rel, n2 LIMIT 1000;"
+                    )
+                    cyphers.append(
+                        "MATCH (n1)-[rel]->(n2) WHERE n2.str_id = $wid "
+                        "AND lower(rel.name) CONTAINS lower($rel) "
+                        "RETURN n1, rel, n2 LIMIT 1000;"
+                    )
+                
+                # Always add a broader fallback or primary query
+                cyphers.extend([
                     "MATCH (n1)-[rel]->(n2) WHERE n1.str_id = $wid "
                     "RETURN n1, rel, n2 LIMIT 5000;",
                     "MATCH (n1)-[rel]->(n2) WHERE n2.str_id = $wid "
                     "RETURN n1, rel, n2 LIMIT 5000;",
-                ):
+                ])
+
+                for cypher in cyphers:
                     try:
-                        result = connector.conn.execute(cypher, {"wid": mid})
+                        params = {"wid": mid}
+                        if "$rel" in cypher:
+                            params["rel"] = rel_query_sanitized
+                            
+                        result = connector.conn.execute(cypher, params)
                         for q in connector.parse_query_quadruplets_output(result):
                             if q.id not in seen:
                                 quads.append(q)
@@ -155,27 +180,50 @@ class HybridRetriever:
                                         print(f"      [RET] Graph quad: {q}")
                     except Exception as e:
                         logger.warning(
-                            "[_get_graph_candidates] KuzuDB str_id query failed for %s: %s", mid, e
+                            "[_get_graph_candidates] KuzuDB query failed for %s (rel=%s): %s", mid, rel_query_sanitized, e
                         )
-            # Name fallback: triggers when wd_ids=[] (resolution failed) OR str_id returned 0 quads
+            
+            # Name fallback
             if not quads:
                 for name in names:
                     if not name:
                         continue
-                    cypher = (
-                        "MATCH (n1)-[rel]->(n2) WHERE lower(n1.name) = lower($name) "
-                        "OR lower(n2.name) = lower($name) RETURN n1, rel, n2 LIMIT 5000;"
-                    )
-                    try:
-                        result = connector.conn.execute(cypher, {"name": name})
-                        for q in connector.parse_query_quadruplets_output(result):
-                            if q.id not in seen:
-                                quads.append(q)
-                                seen.add(q.id)
-                    except Exception as e:
-                        logger.warning(
-                            "[_get_graph_candidates] KuzuDB name query failed for %s: %s", name, e
+                    cyphers = []
+                    if rel_query_sanitized:
+                        # Forward & Reverse
+                        cyphers.append(
+                            "MATCH (n1:Entity)-[rel]->(n2:Entity) "
+                            "WHERE lower(n1.name) = lower($name) "
+                            "AND lower(rel.name) CONTAINS lower($rel) "
+                            "RETURN n1, rel, n2 LIMIT 1000;"
                         )
+                        cyphers.append(
+                            "MATCH (n1:Entity)-[rel]->(n2:Entity) "
+                            "WHERE lower(n2.name) = lower($name) "
+                            "AND lower(rel.name) CONTAINS lower($rel) "
+                            "RETURN n1, rel, n2 LIMIT 1000;"
+                        )
+                    cyphers.append(
+                        "MATCH (n1:Entity)-[rel]->(n2:Entity) "
+                        "WHERE lower(n1.name) = lower($name) "
+                        "OR lower(n2.name) = lower($name) "
+                        "RETURN n1, rel, n2 LIMIT 5000;"
+                    )
+                    
+                    for cypher in cyphers:
+                        try:
+                            params = {"name": name}
+                            if "$rel" in cypher:
+                                params["rel"] = rel_query_sanitized
+                            result = connector.conn.execute(cypher, params)
+                            for q in connector.parse_query_quadruplets_output(result):
+                                if q.id not in seen:
+                                    quads.append(q)
+                                    seen.add(q.id)
+                        except Exception as e:
+                            logger.warning(
+                                "[_get_graph_candidates] KuzuDB name query failed for %s (rel=%s): %s", name, rel_query_sanitized, e
+                            )
             return quads
 
         # ── Branch B: Neo4j / InMemory — BFS via KGNavigator (unchanged) ─────
@@ -468,7 +516,8 @@ class HybridRetriever:
 
             batch = self._get_graph_candidates(
                 [wd_id] if wd_id else [],
-                [res_name]
+                [res_name],
+                rel_query=ext.raw.get('relation', '')
             )
             graph_quads.extend(batch)
             print(f"    Found {len(batch)} quads in graph for '{res_name}'")
