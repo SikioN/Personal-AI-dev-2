@@ -197,29 +197,36 @@ class QAEngine:
 
     def ask(self, question: str, top_k: int = 10, debug: bool = False) -> str:
         """
-        Full 6-stage QA pipeline via stage modules:
-          1. ExtractionStage  — LLM parses question
-          2. Config           — alpha / search_k / flags set inside ExtractionResult
-          3-4. HybridRetriever — HOP 1 + entity resolution + graph + vector retrieval
-          5. ScoringStage     — E5 (from RetrievalResult) + TComplEx + gap-based fact selection
-          6. GenerationStage  — anonymized Q-ID answer → decode
+        Full QA pipeline via stage modules (notebook-aligned):
+          [1/4] ExtractionStage  — LLM parses question → q_type, entities, alpha
+          [2/4] HybridRetriever  — HOP 1 + entity resolution + graph + vector retrieval
+          [3/4] ScoringStage     — E5 + TComplEx + gap-based fact selection
+          [4/4] GenerationStage  — anonymized Q-ID answer → decode
         """
+        import time as _time
+
         SEP = '=' * 70
         print(f'\n{SEP}\n[ask] QUESTION: {question}\n{SEP}')
 
         if not self.llm_client:
             return "LLM client not available. Set LLM_BACKEND=yandexgpt or ensure Ollama is running."
 
-        # Stage 1 + 2
-        print('[1/6] Extracting parameters...')
+        timings: dict = {}
+        t0 = _time.time()
+        t_s = t0
+
+        # Stage 1: Extraction
+        print('\n[1/4] Extracting...')
         extraction = self._extraction_stage.run(question)
+        timings['extract'] = round(_time.time() - t_s, 2); t_s = _time.time()
         if debug:
             print(f'  ext={extraction}')
-        print(f'[2/6] type={extraction.q_type}, alpha={extraction.alpha}')
+        print(f'  type={extraction.q_type}, alpha={extraction.alpha:.2f}')
 
-        # Stage 3 + 4: HOP 1 + Retrieval
-        print('[3-4/6] HOP 1 + Retrieval...')
+        # Stage 2: HOP 1 + Retrieval
+        print('\n[2/4] Retrieving...')
         retrieval = self._retrieval_stage.run(question, extraction)
+        timings['retrieve'] = round(_time.time() - t_s, 2); t_s = _time.time()
         print(f'  {len(retrieval.unique_candidates)} unique candidates, '
               f'time={retrieval.resolved_time}, search_k={retrieval.search_k}')
 
@@ -227,23 +234,27 @@ class QAEngine:
             print('[ask] No candidates found.')
             return 'Unknown'
 
-        # Stage 5: Scoring + gap selection
-        print(f'[5/6] Scoring {len(retrieval.unique_candidates)} candidates...')
+        # Stage 3: Scoring + gap selection
+        print(f'\n[3/4] Scoring {len(retrieval.unique_candidates)} candidates...')
         scoring = self._scoring_stage.run(question, retrieval, extraction)
+        timings['score'] = round(_time.time() - t_s, 2); t_s = _time.time()
         print(f'  Selected {len(scoring.selected_quads)} facts after gap selection.')
 
         if debug:
             for r in scoring.all_scored[:5]:
-                print(f"  [{r.conf:.3f}] E5={r.e5:.3f} T={r.tp:.3f}")
+                print(f"  [{r.conf:.3f}] E5={r.e5:.3f} T={r.tp:.3f} tl={r.tl:.1f}")
 
-        # Stage 6: Generation
-        print('[6/6] Generating answer...')
+        # Stage 4: Generation
+        print('\n[4/4] Generating answer...')
         generation = self._generation_stage.run(
             question, scoring.selected_quads, extraction, retrieval
         )
+        timings['generate'] = round(_time.time() - t_s, 2)
 
         answer = generation.answer
-        print(f'\n{SEP}\n>>> ANSWER: {answer}\n{SEP}\n')
+        timing_str = ' | '.join(f'{k}={v}s' for k, v in timings.items())
+        total = round(_time.time() - t0, 2)
+        print(f'\n{SEP}\n>>> ANSWER: {answer}  ({total}s)\n[TIMING] {timing_str}\n{SEP}\n')
         return answer
 
     def hot_reload_scorer(self, checkpoint_path: str) -> None:
