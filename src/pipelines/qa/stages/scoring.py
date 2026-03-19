@@ -172,11 +172,21 @@ class ScoringStage:
         
         # Identify TB quads and boost them
         tb_quad_ids = {q.id for q in retrieval.temporal_bucket}
-        tb_scored = []
+        tb_scored_all = []
         for r in scored:
             if r.quad.id in tb_quad_ids:
+                # 2.4: temporal_bucket facts get a minimum confidence boost
+                # This ensures facts for the correct year are prioritized
                 r.conf = max(0.55, r.conf)
-                tb_scored.append(r)
+                tb_scored_all.append(r)
+        
+        # [v7 Fix]: Limit the temporal bucket to prevent context flooding from noisy entities
+        # (e.g. 1700 Nobel Prize quads flooding the context for 1965).
+        # We take a generous limit but not "all".
+        tb_limit = max(10, self.config.max_facts * 2)
+        tb_scored = tb_scored_all[:tb_limit]
+        if len(tb_scored_all) > tb_limit:
+            print(f"  [SCORE] Limited temporal bucket from {len(tb_scored_all)} to {tb_limit} quads (Top-N by E5)")
 
         # Get extra candidates not in TB
         extra_scored = [r for r in top_scored if r.quad.id not in tb_quad_ids]

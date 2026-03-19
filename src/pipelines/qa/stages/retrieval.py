@@ -510,17 +510,26 @@ class HybridRetriever:
             
             # DBG: Detailed resolution info
             src = "DB"
-            if wd_id and hasattr(self.mapper, 'fallback_name2id') and self.mapper.fallback_name2id.get(ent.lower()) == wd_id:
-                src = "RAM"
+            if wd_id:
+                if hasattr(self.mapper, 'manual_overrides') and self.mapper.manual_overrides.get(ent.lower()) == wd_id:
+                    src = "MANUAL"
+                elif hasattr(self.mapper, 'fallback_name2id') and self.mapper.fallback_name2id.get(ent.lower()) == wd_id:
+                    src = "RAM"
             print(f"  - Resolved: '{ent}' -> '{res_name}' ({wd_id}) [via {src}]")
 
+            # [v7 Fix]: Prioritize subject over anchor to reduce noise.
+            # Anchor entities (used for year extraction) don't need 5000 quads.
+            limit = 5000
+            if ext.anchor_entity and ent.lower() == ext.anchor_entity.lower():
+                limit = 1000
+                
             batch = self._get_graph_candidates(
                 [wd_id] if wd_id else [],
                 [res_name],
                 rel_query=ext.raw.get('relation', '')
-            )
+            )[:limit]
             graph_quads.extend(batch)
-            print(f"    Found {len(batch)} quads in graph for '{res_name}'")
+            print(f"    Found {len(batch)} quads in graph for '{res_name}' (limit={limit})")
 
         # Deduplicate graph quads
         seen_ids: set = set()
@@ -586,7 +595,11 @@ class HybridRetriever:
                     extra_ids = [e[2] for e in resolved_entities if e[2]]
                     if extra_ids:
                         # Limit to 2000 to avoid OOM or slow DB response
-                        extra_graph = self._get_graph_candidates(extra_ids, [])[:2000]
+                        # [v7 Fix]: Pass rel_query to prioritize important facts (e.g. head of government)
+                        extra_graph = self._get_graph_candidates(
+                            extra_ids, [], 
+                            rel_query=ext.raw.get('relation', '')
+                        )[:2000]
                         bucket_candidates = list({q.id: q for q in (unique_candidates + extra_graph)}.values())
                 
                 temporal_bucket = self._build_temporal_bucket(bucket_candidates, t_int)
