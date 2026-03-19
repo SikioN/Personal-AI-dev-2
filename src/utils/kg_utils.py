@@ -190,7 +190,18 @@ class KGEntityMapper:
         # Fallback: contains scan (Kuzu-safe)
         result = self._db.execute_query(
             'MATCH (n) WHERE lower(n.name) contains lower($query) '
-            'RETURN n.name AS name LIMIT $limit',
-            params={'query': query, 'limit': limit}
+            'RETURN n.name AS name LIMIT 100',
+            params={'query': query}
         )
-        return [r['name'] for r in result] if result else []
+        if result:
+            def _closeness(n):
+                n_str, q_str = n.lower(), query.lower()
+                if n_str == q_str: return 0
+                if n_str.startswith(q_str): return 1
+                return 2 + len(n_str)
+            
+            names = [r['name'] for r in result]
+            names.sort(key=_closeness)
+            return names[:limit]
+        
+        return []
