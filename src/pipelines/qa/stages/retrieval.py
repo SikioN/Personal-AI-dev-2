@@ -365,6 +365,17 @@ class HybridRetriever:
             m = re.search(r'(\d{4})', raw)
             if m:
                 return m.group(1)
+            
+            # 4. Semantic fallback: if LLM failed, take year from the most similar fact (if sim > 0.8)
+            if 'ranked' in locals() and ranked:
+                best_sim, best_q = ranked[0]
+                if best_sim > 0.8:
+                    sy, _ = self._parse_years(best_q)
+                    if sy:
+                        if hasattr(self.config, 'debug') and self.config.debug:
+                            print(f"  [HOP 1] LLM failed, using semantic fallback (sim={best_sim:.2f}): {sy}")
+                        return str(sy)
+
         except Exception as e:
             # 5.1: capture HOP 1 failures specifically
             logger.warning("[HybridRetriever] HOP 1 failed for %s: %s", anchor_ent_id, e)

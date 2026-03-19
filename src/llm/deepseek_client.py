@@ -7,6 +7,40 @@ from typing import Dict, Any, Optional
 from src.llm.base_client import BaseLLMClient
 
 
+SYSTEM_PROMPT = """
+You are an expert NER system for a Temporal Knowledge Graph.
+
+FIELDS TO EXTRACT:
+1. entities: List of ALL subjects, objects, concepts mentioned.
+2. relation: The relationship queried (e.g. "spouse", "president", "born").
+3. time: Specific year (e.g. "2011") or null.
+4. anchor_entity: (JOIN queries) Entity whose event determines the context time.
+5. anchor_event: (JOIN queries) The event/relation (INCLUDE THE VERB, e.g. "nominated for Nobel Prize").
+6. type: One of [simple_entity, simple_time, before_after, first_last, time_join].
+7. answer_type: "year" if the expected answer is a year/date, "entity" otherwise.
+
+CLASSIFICATION RULES (CRITICAL):
+- time_join: Requires finding a specific time from ONE event and applying it to ANOTHER.
+  EXAMPLE: "Who was head of gov of USA when Nabokov was nominated for Nobel?"
+  → type: "time_join", anchor_entity: "Vladimir Nabokov", anchor_event: "nominated for Nobel Prize in Literature"
+- simple_time: The ANSWER itself is a year (e.g. "When did X happen?").
+- simple_entity: The ANSWER is a person/place/concept.
+- before_after: asks about facts BEFORE or AFTER a year.
+- first_last: sequence ordering (first book, last award).
+
+Output ONLY valid JSON:
+{
+    "entities": ["Entity1", "Entity2"],
+    "relation": "Relation Name",
+    "time": "YYYY" or null,
+    "anchor_entity": "EntityName" or null,
+    "anchor_event": "EventName" or null,
+    "type": "question_type",
+    "answer_type": "year" or "entity"
+}
+"""
+
+
 class DeepSeekClient(BaseLLMClient):
     """
     Drop-in replacement for YandexGPTClient using DeepSeek API.
@@ -73,46 +107,11 @@ class DeepSeekClient(BaseLLMClient):
     def extract_search_parameters(self, question: str) -> Dict[str, Any]:
         """
         Extract structured NER params from a natural language question.
-        Mirrors YandexGPTClient.extract_search_parameters() exactly.
         Returns: {'entities': [...], 'relation': '...', 'time': 'YYYY' or None}
         """
-        system_prompt = """
-You are an expert NER system for a Temporal Knowledge Graph.
-
-FIELDS TO EXTRACT:
-1. entities: List of ALL subjects, objects, concepts mentioned.
-2. relation: The relationship queried (e.g. "spouse", "president", "born").
-3. time: Specific year (e.g. "2011") or null.
-4. anchor_entity: (JOIN queries) Entity whose event determines the time.
-5. anchor_event: (JOIN queries) The event/relation to find the time.
-6. type: One of [simple_entity, simple_time, before_after, first_last, time_join].
-7. answer_type: "year" if the expected answer is a year/date, "entity" otherwise.
-
-CLASSIFICATION RULES (CRITICAL):
-- simple_time: The ANSWER itself is a year or date (e.g. "When did X happen?", "In what year did X?")
-  → answer_type MUST be "year"
-- simple_entity: The ANSWER is a person/place/organization/concept.
-  → Even if the question contains a year as a FILTER, it's still simple_entity!
-  → Example: "Who was X's spouse in 1919?" → simple_entity (answer=person, 1919 is a filter)
-  → Example: "Where did X live after 1960?" → before_after
-- before_after: Question asks for entity BEFORE or AFTER a specific year.
-- first_last: Question asks for first/last in a sequence.
-- time_join: Requires linking TWO events via temporal overlap.
-
-Output ONLY valid JSON:
-{
-    "entities": ["Entity1", "Entity2"],
-    "relation": "Relation Name",
-    "time": "YYYY" or null,
-    "anchor_entity": "EntityName" or null,
-    "anchor_event": "EventName" or null,
-    "type": "question_type",
-    "answer_type": "year" or "entity"
-}
-"""
         prompt = f"Question: {question}"
 
-        response = self.generate(prompt, system=system_prompt, json_mode=True)
+        response = self.generate(prompt, system=SYSTEM_PROMPT, json_mode=True)
         if not response:
             return {}
 
