@@ -139,10 +139,10 @@ class HybridRetriever:
             quads: List[Quadruplet] = []
             for mid in wd_ids:
                 for cypher in (
-                    "MATCH (n1)-[rel:simple]->(n2) WHERE n1.str_id = $wid "
-                    "RETURN n1, rel, n2 LIMIT 1000;",
-                    "MATCH (n1)-[rel:simple]->(n2) WHERE n2.str_id = $wid "
-                    "RETURN n1, rel, n2 LIMIT 1000;",
+                    "MATCH (n1)-[rel]->(n2) WHERE n1.str_id = $wid "
+                    "RETURN n1, rel, n2 LIMIT 5000;",
+                    "MATCH (n1)-[rel]->(n2) WHERE n2.str_id = $wid "
+                    "RETURN n1, rel, n2 LIMIT 5000;",
                 ):
                     try:
                         result = connector.conn.execute(cypher, {"wid": mid})
@@ -159,22 +159,20 @@ class HybridRetriever:
                 for name in names:
                     if not name:
                         continue
-                    for cypher in (
-                        "MATCH (n1)-[rel:simple]->(n2) WHERE n1.name = $name "
-                        "RETURN n1, rel, n2 LIMIT 1000;",
-                        "MATCH (n1)-[rel:simple]->(n2) WHERE n2.name = $name "
-                        "RETURN n1, rel, n2 LIMIT 1000;",
-                    ):
-                        try:
-                            result = connector.conn.execute(cypher, {"name": name})
-                            for q in connector.parse_query_quadruplets_output(result):
-                                if q.id not in seen:
-                                    quads.append(q)
-                                    seen.add(q.id)
-                        except Exception as e:
-                            logger.warning(
-                                "[_get_graph_candidates] KuzuDB name query failed for %s: %s", name, e
-                            )
+                    cypher = (
+                        "MATCH (n1)-[rel]->(n2) WHERE lower(n1.name) = lower($name) "
+                        "OR lower(n2.name) = lower($name) RETURN n1, rel, n2 LIMIT 5000;"
+                    )
+                    try:
+                        result = connector.conn.execute(cypher, {"name": name})
+                        for q in connector.parse_query_quadruplets_output(result):
+                            if q.id not in seen:
+                                quads.append(q)
+                                seen.add(q.id)
+                    except Exception as e:
+                        logger.warning(
+                            "[_get_graph_candidates] KuzuDB name query failed for %s: %s", name, e
+                        )
             return quads
 
         # ── Branch B: Neo4j / InMemory — BFS via KGNavigator (unchanged) ─────

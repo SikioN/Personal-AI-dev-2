@@ -90,68 +90,78 @@ class GenerationStage:
         extraction: "ExtractionResult",
         retrieval: "RetrievalResult",
     ) -> GenerationResult:
-        anon_q = self._anonymize_question(question, retrieval.resolved_entities)
-        ctx = self._build_anon_ctx(selected_quads)
-
-        answer_type = extraction.answer_type
-        q_type = extraction.q_type
-
-        if answer_type == 'year' or q_type == 'simple_time':
-            answer_hint = 'ANSWER (year or date range only, e.g. "1925" or "1899 - 1917"):'
-        else:
-            answer_hint = 'ANSWER (Q-ID only, e.g. Q123):'
-
-        user_msg = (
-            f"QUESTION: {anon_q}\n"
-            f"TIME CONTEXT: {retrieval.resolved_time}\n"
-            f"FACTS:\n{ctx}\n"
-            f"{answer_hint}"
-        )
-
         try:
+            anon_q = self._anonymize_question(question, retrieval.resolved_entities)
+            ctx = self._build_anon_ctx(selected_quads)
+
+            answer_type = extraction.answer_type
+            q_type = extraction.q_type
+
+            if answer_type == 'year' or q_type == 'simple_time':
+                answer_hint = 'ANSWER (year or date range only, e.g. "1925" or "1899 - 1917"):'
+            else:
+                answer_hint = 'ANSWER (Q-ID only, e.g. Q123):'
+
+            user_msg = (
+                f"QUESTION: {anon_q}\n"
+                f"TIME CONTEXT: {retrieval.resolved_time}\n"
+                f"FACTS:\n{ctx}\n"
+                f"{answer_hint}"
+            )
+
             raw_ans = self.llm.generate(user_msg, system=self.config.anon_system_prompt)
+            
             if extraction.debug:
                 print(f"  [GEN] raw_llm_output={raw_ans!r}")
                 print(f"  [GEN] context_used (lines)={len(ctx.splitlines())}")
-        except Exception as e:
-            # 5.1: return None answer so handlers can show a proper user-facing message
-            import logging as _logging
-            _logging.getLogger(__name__).error("[GenerationStage] LLM call failed: %s", e)
-            return GenerationResult(
-                answer=None,
-                raw_llm_output=str(e),
-                decoded_qid=None,
-                context_used=ctx,
-            )
 
-        if answer_type == 'year' or q_type == 'simple_time':
-            year = self._extract_year(raw_ans)
-            if year:
-                answer = year
+            if not raw_ans:
+                return GenerationResult(
+                    answer='Unknown',
+                    raw_llm_output='',
+                    decoded_qid=None,
+                    context_used=ctx,
+                )
+
+            if answer_type == 'year' or q_type == 'simple_time':
+                if 'null' in raw_ans.lower():
+                    answer = 'Unknown'
+                else:
+                    year = self._extract_year(raw_ans)
+                    if year:
+                        answer = year
+                    else:
+                        # Fallback: try to decode Q-ID and look up its label (might be a year node)
+                        qid = self._decode_qid(raw_ans)
+                        if qid:
+                            label = self.mapper.get_label(qid)
+                            year2 = self._extract_year(label)
+                            answer = year2 or label
+                        else:
+                            answer = raw_ans.strip() or 'Unknown'
             else:
-                # Fallback: try to decode Q-ID and look up its label (might be a year node)
                 qid = self._decode_qid(raw_ans)
                 if qid:
-                    label = self.mapper.get_label(qid)
-                    year2 = self._extract_year(label)
-                    answer = year2 or label
+                    label = self.mapper.get_label_with_id(qid)
+                    answer = label if label else qid
+                elif 'null' in raw_ans.lower():
+                    answer = 'Unknown'
                 else:
                     answer = raw_ans.strip() or 'Unknown'
-        else:
-            qid = self._decode_qid(raw_ans)
-            if qid:
-                label = self.mapper.get_label_with_id(qid)
-                answer = label if label else qid
-            elif 'null' in raw_ans.lower():
-                answer = 'Unknown'
-            else:
-                answer = raw_ans.strip() or 'Unknown'
 
-
-        decoded_qid = self._decode_qid(raw_ans)
-        return GenerationResult(
-            answer=answer,
-            raw_llm_output=raw_ans,
-            decoded_qid=decoded_qid,
-            context_used=ctx,
-        )
+            decoded_qid = self._decode_qid(raw_ans)
+            return GenerationResult(
+                answer=answer,
+                raw_llm_output=raw_ans,
+                decoded_qid=decoded_qid,
+                context_used=ctx,
+            )
+        except Exception as e:
+            import logging as _logging
+            _logging.getLogger(__name__).error("[GenerationStage] Execution failed: %s", e, exc_info=True)
+            return GenerationResult(
+                answer='Unknown',
+                raw_llm_output=str(e),
+                decoded_qid=None,
+                context_used=ctx if 'ctx' in locals() else '',
+            )
