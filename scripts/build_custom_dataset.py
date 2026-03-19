@@ -55,18 +55,21 @@ def _check_files(input_dir: str) -> list[Path]:
     skipped_fmt = 0
 
     for f in all_files:
-        if not f.is_file():
-            continue
-        if f.suffix.lower() not in ALLOWED_EXTENSIONS:
-            skipped_fmt += 1
-            continue
-        size_mb = f.stat().st_size / (1024 ** 2)
-        if size_mb > MAX_FILE_MB:
-            logger.warning("SKIP (%.1f MB > %d MB limit): %s", size_mb, MAX_FILE_MB, f.name)
-            skipped_size += 1
-            continue
-        accepted.append(f)
-        logger.info("  [%.1f MB] %s", size_mb, f.name)
+        try:
+            if not f.is_file():
+                continue
+            if f.suffix.lower() not in ALLOWED_EXTENSIONS:
+                skipped_fmt += 1
+                continue
+            size_mb = f.stat().st_size / (1024 ** 2)
+            if size_mb > MAX_FILE_MB:
+                logger.warning("SKIP (%.1f MB > %d MB limit): %s", size_mb, MAX_FILE_MB, f.name)
+                skipped_size += 1
+                continue
+            accepted.append(f)
+            logger.info("  [%.1f MB] %s", size_mb, f.name)
+        except PermissionError:
+            logger.warning("SKIP (permission denied): %s", f.name)
 
     logger.info(
         "Files: %d accepted | %d too large (>%d MB) | %d unsupported format",
@@ -129,8 +132,12 @@ def main() -> None:
         )
     )
     parser.add_argument(
-        "--input", "-i", required=True, metavar="DIR",
+        "--input", "-i", metavar="DIR",
         help="Directory with documents to ingest (PDF, DOCX, PPTX, TXT).",
+    )
+    parser.add_argument(
+        "--file", "-f", metavar="FILE",
+        help="Single file to ingest (shortcut — no need to create a directory).",
     )
     parser.add_argument(
         "--force", action="store_true",
@@ -146,16 +153,35 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    input_dir = args.input
-    if not os.path.isdir(input_dir):
-        print(f"ERROR: directory not found: {input_dir}")
-        sys.exit(1)
+    if not args.input and not args.file:
+        parser.print_help()
+        sys.exit(0)
+
+    # ── Single-file mode: wrap in temp dir ───────────────────────────────────
+    import tempfile, shutil as _shutil
+    _tmpdir = None
+    if args.file:
+        fpath = Path(args.file)
+        if not fpath.is_file():
+            print(f"ERROR: file not found: {fpath}")
+            sys.exit(1)
+        _tmpdir = tempfile.mkdtemp(prefix="build_ds_")
+        _shutil.copy2(fpath, _tmpdir)
+        input_dir = _tmpdir
+        print(f"[FILE] Single-file mode: {fpath.name}")
+    else:
+        input_dir = args.input
+        if not os.path.isdir(input_dir):
+            print(f"ERROR: directory not found: {input_dir}")
+            sys.exit(1)
 
     # ── Pre-flight: list accepted files ──────────────────────────────────────
     print(f"\n[SCAN] {input_dir}")
     accepted = _check_files(input_dir)
     if not accepted:
         print("No accepted files found. Add PDF / DOCX / PPTX / TXT files and retry.")
+        if _tmpdir:
+            _shutil.rmtree(_tmpdir, ignore_errors=True)
         sys.exit(0)
 
     print(f"\n[INGEST] Starting extraction + ingestion for {len(accepted)} files...\n")
@@ -179,6 +205,10 @@ def main() -> None:
             "\nHint: if all files were 'already processed', run with --force to reprocess.\n"
             "Hint: check LLM_BACKEND and API keys in .env if extraction returned 0 facts."
         )
+
+    # ── Cleanup temp dir ─────────────────────────────────────────────────────
+    if _tmpdir:
+        _shutil.rmtree(_tmpdir, ignore_errors=True)
 
     # ── Optional QA test ─────────────────────────────────────────────────────
     if args.ask:
