@@ -374,7 +374,7 @@ def _load_production_engine(config):
             db_info={'db': 'default_db', 'table': 'personalaitable'}))
 
     # Graph backend — controlled by GRAPH_BACKEND env var
-    graph_backend = os.environ.get('GRAPH_BACKEND', 'neo4j').lower()
+    graph_backend = os.environ.get('GRAPH_BACKEND', 'kuzu').lower()
     if graph_backend == 'kuzu':
         from src.db_drivers.graph_driver.connectors.KuzuConnector import DEFAULT_KUZU_CONFIG
         from src.db_drivers.graph_driver.utils import GraphDBConnectionConfig
@@ -582,12 +582,7 @@ def load_engine():
         return _engine, _navigator, _kg_model
 
     with _engine_lock:
-        # Double-checked locking
-        if _engine is not None:
-            return _engine, _navigator, _kg_model
-
-        use_inmemory = os.environ.get("USE_INMEMORY", "true").lower() in ("1", "true", "yes")
-
+        use_inmemory = os.environ.get("USE_INMEMORY", "false").lower() in ("1", "true", "yes")
         if use_inmemory:
             # --- IN-MEMORY MODE: full QAEngine with InMemoryGraphConnector ---
             # Force in-memory graph; point ChromaDB to empty /tmp (no global ANN indexing)

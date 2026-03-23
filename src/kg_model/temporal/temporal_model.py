@@ -146,10 +146,15 @@ class TemporalScorer:
         Uses the regularizer loss from TComplEx.forward() as the training signal.
         """
         import numpy as np
+        import torch.nn.functional as F
+
         self.model.train()
         optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
         data = torch.tensor(train_data, dtype=torch.long, device=self.device)
         n = len(data)
+        
+        reg_weight = 1e-2 # Standard TKBC L3 weight
+
         for epoch in range(epochs):
             perm = torch.randperm(n, device=self.device)
             epoch_loss = 0.0
@@ -157,8 +162,19 @@ class TemporalScorer:
             for i in range(0, n, batch_size):
                 batch = data[perm[i:i + batch_size]]
                 optimizer.zero_grad()
-                _, regularizer, _ = self.model.forward(batch)
-                loss = regularizer
+                
+                # forward returns: (predictions, regularizer_tuple, time_weights)
+                # predictions shape is (batch_size, num_entities)
+                predictions, regularizer, _ = self.model.forward(batch)
+                
+                # Targets are rhs objects (index 2 in the batch 4-tuple)
+                targets = batch[:, 2]
+                ce_loss = F.cross_entropy(predictions, targets)
+                
+                # l3 regularization
+                l3_reg = sum(torch.sum(torch.abs(r) ** 3) for r in regularizer)
+                
+                loss = ce_loss + reg_weight * l3_reg
                 loss.backward()
                 optimizer.step()
                 epoch_loss += loss.item()

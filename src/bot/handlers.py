@@ -245,7 +245,7 @@ async def cmd_status(message: Message):
     except Exception:
         pass
     ingested = e_status.get("ingested_facts", 0)
-    graph_backend = os.environ.get("GRAPH_BACKEND", "neo4j")
+    graph_backend = os.environ.get("GRAPH_BACKEND", "kuzu")
 
     if kg_model is None:
         # In-memory mode — Neo4j/ChromaDB deliberately not used
@@ -610,6 +610,16 @@ async def handle_document(message: Message, bot: Bot):
     logger.info("[document] received from chat_id=%s file=%r", message.chat.id,
                 message.document.file_name if message.document else None)
     doc = message.document
+    
+    if doc.file_size and doc.file_size > 20 * 1024 * 1024:
+        if not os.environ.get("TELEGRAM_API_URL"):
+            await message.answer(
+                "Файл слишком большой (>20 МБ).\n"
+                "Публичный API Telegram не позволяет ботам скачивать такие файлы без ограничения.\n"
+                "Настройте TELEGRAM_API_URL для локального сервера."
+            )
+            return
+
     ext = Path(doc.file_name or "").suffix.lower()
     if ext not in _ALLOWED_EXTENSIONS:
         await message.answer(
@@ -622,74 +632,79 @@ async def handle_document(message: Message, bot: Bot):
     os.makedirs(save_dir, exist_ok=True)
     save_path = os.path.join(save_dir, doc.file_name)
 
+    fname_esc = _esc(doc.file_name)
+    status_msg = await message.answer(
+        f"Файл *{fname_esc}* принят в очередь\\. Ожидайте обработки\\.\\.\\.",
+        parse_mode="MarkdownV2",
+    )
+
+    # Run actual downloading and processing in the background to not block Telegram updates
+    asyncio.create_task(_process_document_bg(bot, doc, save_path, status_msg))
+
+
+async def _process_document_bg(bot: Bot, doc, save_path: str, status_msg: Message):
+    fname_esc = _esc(doc.file_name)
+    loop = asyncio.get_running_loop()
     try:
         await bot.download(doc, destination=save_path)
-        fname_esc = _esc(doc.file_name)
-        loop = asyncio.get_running_loop()  # capture before entering thread
-
-        status_msg = await message.answer(
+        await status_msg.edit_text(
             f"Файл *{fname_esc}* загружен\\. Начинаю извлечение фактов\\.\\.\\.",
             parse_mode="MarkdownV2",
         )
 
-        try:
-            from src.pipelines.ingestion.doc_ingestion_service import DocIngestionService
-            logger.info("[document] loading engine for %s", save_path)
-            engine, _, kg_model = await asyncio.to_thread(_get_engine_and_navigator)
-            logger.info("[document] engine ready, kg_model=%s", type(kg_model).__name__ if kg_model else None)
-            service = DocIngestionService(
-                kg_model=kg_model,
-                inmemory_engine=engine if kg_model is None else None,
+        from src.pipelines.ingestion.doc_ingestion_service import DocIngestionService
+        logger.info("[document] loading engine for %s", save_path)
+        engine, _, kg_model = await asyncio.to_thread(_get_engine_and_navigator)
+        logger.info("[document] engine ready, kg_model=%s", type(kg_model).__name__ if kg_model else None)
+        service = DocIngestionService(
+            kg_model=kg_model,
+            inmemory_engine=engine if kg_model is None else None,
+        )
+
+        def sync_progress(text: str):
+            async def _do() -> None:
+                await status_msg.edit_text(_esc(text), parse_mode="MarkdownV2")
+            asyncio.run_coroutine_threadsafe(_do(), loop)
+
+        logger.info("[document] waiting for semaphore...")
+        async with _get_semaphore():
+            logger.info("[document] semaphore acquired, starting ingest_single_file")
+            res = await asyncio.to_thread(
+                service.ingest_single_file, save_path, None, sync_progress
             )
+        logger.info("[document] ingest done: added=%s errors=%s", res.get("added"), res.get("errors"))
 
-            def sync_progress(text: str):
-                async def _do() -> None:
-                    await status_msg.edit_text(_esc(text), parse_mode="MarkdownV2")
-                asyncio.run_coroutine_threadsafe(_do(), loop)
+        added = res["added"]
+        sample_quads = res.get("quadruplets", [])
 
-            logger.info("[document] waiting for semaphore...")
-            async with _get_semaphore():
-                logger.info("[document] semaphore acquired, starting ingest_single_file")
-                res = await asyncio.to_thread(
-                    service.ingest_single_file, save_path, None, sync_progress
-                )
-            logger.info("[document] ingest done: added=%s errors=%s", res.get("added"), res.get("errors"))
-
-            added = res["added"]
-            sample_quads = res.get("quadruplets", [])
-
-            if added == 0 and res["errors"] == 0:
-                await status_msg.edit_text(
-                    f"В файле *{fname_esc}* не найдено новых фактов\\.",
-                    parse_mode="MarkdownV2",
-                )
-                return
-
-            summary = (
-                f"Обработка *{fname_esc}* завершена\\!\n\n"
-                f"Добавлено фактов: `{added}`\n"
-                f"Ошибок: `{res['errors']}`"
-            )
-            if sample_quads:
-                from src.bot.formatters import format_ingest_sample
-                sample_text = format_ingest_sample(sample_quads, max_n=5)
-                total_str = f" \\(показаны 5 из {len(sample_quads)}\\)" if len(sample_quads) > 5 else ""
-                summary += f"\n\n*Примеры извлечённых фактов*{total_str}:\n{sample_text}"
-
-            retrain_kb = InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="Обновить модель", callback_data="menu_retrain_confirm")
-            ]]) if added > 0 else None
-            await status_msg.edit_text(summary, parse_mode="MarkdownV2", reply_markup=retrain_kb)
-        except Exception as ingest_err:
-            logger.exception("In-flight ingestion failed")
+        if added == 0 and res["errors"] == 0:
             await status_msg.edit_text(
-                f"Ошибка при обработке файла: `{_esc(str(ingest_err)[:100])}`",
+                f"В файле *{fname_esc}* не найдено новых фактов\\.",
                 parse_mode="MarkdownV2",
             )
+            return
 
+        summary = (
+            f"Обработка *{fname_esc}* завершена\\!\n\n"
+            f"Добавлено фактов: `{added}`\n"
+            f"Ошибок: `{res['errors']}`"
+        )
+        if sample_quads:
+            from src.bot.formatters import format_ingest_sample
+            sample_text = format_ingest_sample(sample_quads, max_n=5)
+            total_str = f" \\(показаны 5 из {len(sample_quads)}\\)" if len(sample_quads) > 5 else ""
+            summary += f"\n\n*Примеры извлечённых фактов*{total_str}:\n{sample_text}"
+
+        retrain_kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="Обновить модель", callback_data="menu_retrain_confirm")
+        ]]) if added > 0 else None
+        await status_msg.edit_text(summary, parse_mode="MarkdownV2", reply_markup=retrain_kb)
     except Exception as e:
-        logger.exception("Error downloading document")
-        await message.answer(f"Ошибка загрузки файла: {_esc(str(e)[:200])}")
+        logger.exception("Error processing document in background")
+        await status_msg.edit_text(
+            f"Ошибка при обработке файла: `{_esc(str(e)[:200])}`",
+            parse_mode="MarkdownV2",
+        )
 
 
 def _extract_query(text: str, command: str) -> str:

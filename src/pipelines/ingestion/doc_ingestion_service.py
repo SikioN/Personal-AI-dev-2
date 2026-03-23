@@ -210,6 +210,9 @@ class DocIngestionService:
                 if text is None:
                     logger.warning("[DocIngestionService] Cannot read file: %s", filepath)
                     return {"quadruplets": [], "added": 0, "errors": 1}
+                if len(text.strip()) == 0:
+                    logger.warning("[DocIngestionService] Extracted text from %s is EMPTY. Could be a scanned PDF without OCR.", fname)
+                    return {"quadruplets": [], "added": 0, "errors": 1}
                 logger.info("[DocIngestionService] Read %s — %d chars", fname, len(text))
 
             prop_map = fetch_all_wikidata_properties(use_cache=True)

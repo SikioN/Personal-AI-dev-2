@@ -41,7 +41,16 @@ async def main():
     allowed_raw = os.environ.get("ALLOWED_USERS", "*")
     access_mw = AccessControlMiddleware(allowed_raw)
 
-    bot = Bot(token=token, default=DefaultBotProperties())
+    bot_kwargs = {"token": token, "default": DefaultBotProperties()}
+    
+    telegram_api_url = os.environ.get("TELEGRAM_API_URL")
+    if telegram_api_url:
+        from aiogram.client.session.aiohttp import AiohttpSession
+        from aiogram.client.telegram import TelegramAPIServer
+        bot_kwargs["session"] = AiohttpSession(api=TelegramAPIServer.from_base(telegram_api_url))
+        logger.info(f"Using Custom Telegram API Server at {telegram_api_url}")
+
+    bot = Bot(**bot_kwargs)
     dp = Dispatcher()
     dp.message.middleware(access_mw)
     dp.callback_query.middleware(access_mw)
