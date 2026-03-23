@@ -367,6 +367,7 @@ class TemporalKGIngester:
                 logger.error(
                     "[TemporalKGIngester] Error adding batch %d-%d: %s",
                     batch_start, batch_start + len(batch) - 1, exc,
+                    exc_info=True
                 )
                 kg_errors += len(batch)
                 result.errors += len(batch)
