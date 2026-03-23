@@ -2,6 +2,7 @@ from typing import List, Dict, Union
 import kuzu
 import json
 import os
+import threading
 
 from ....utils.errors import ReturnInfo
 from ....utils.data_structs import Node, NodeCreator, NODES_TYPES_MAP, RelationCreator, QuadrupletCreator, Relation, RELATIONS_TYPES_MAP, NodeType, RelationType
@@ -33,6 +34,7 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
 
     def __init__(self, config: GraphDBConnectionConfig = DEFAULT_KUZU_CONFIG) -> None:
         self.config = config
+        self._lock = threading.Lock()
 
     def open_connection(self) -> ReturnInfo:
         load_path = self.config.params['path']
@@ -134,9 +136,10 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
 
         # Wrap entire batch in one transaction — avoids per-execute auto-commit overhead
         # KuzuDB manages transactions via Cypher statements
-        self.conn.execute("BEGIN TRANSACTION;")
-        created_nodes = set()
+        self._lock.acquire()
         try:
+            self.conn.execute("BEGIN TRANSACTION;")
+            created_nodes = set()
             for i, quadruplet in enumerate(quadruplets):
                 cur_info = creation_info.get(i, None)
                 
@@ -162,6 +165,7 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
 
                 insert_rel_query, p = self.create_rel_query(quadruplet)
                 self.conn.execute(insert_rel_query, p)
+            
             self.conn.execute("COMMIT;")
         except Exception:
             try:
@@ -169,14 +173,21 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
             except Exception:
                 pass
             raise
+        finally:
+            self._lock.release()
 
     def read(self, ids: List[str]) -> List[Quadruplet]:
         for t_id in ids:
             if type(t_id) is not str:
                 raise ValueError
 
-        query = "MATCH (n1)-[rel]->(n2) WHERE rel.t_id IN $ids RETURN n1, rel, n2;"
-        raw_output = self.conn.execute(query, {"ids": ids})
+        self._lock.acquire()
+        try:
+            query = "MATCH (n1)-[rel]->(n2) WHERE rel.t_id IN $ids RETURN n1, rel, n2;"
+            raw_output = self.conn.execute(query, {"ids": ids})
+        finally:
+            self._lock.release()
+            
         quadruplets = self.parse_query_quadruplets_output(raw_output)
         return quadruplets
 
@@ -211,22 +222,26 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
             raise ValueError
 
         dump_name = json.dumps(name, ensure_ascii=False)
-        if object == 'relation':
-            rel_t = self.config.params['table_type_map']['relations']['forward'][object_type.value]
+        self._lock.acquire()
+        try:
+            if object == 'relation':
+                rel_t = self.config.params['table_type_map']['relations']['forward'][object_type.value]
 
-            query = f"MATCH (n1)-[rel:{rel_t}]->(n2) WHERE rel.name = $name RETURN n1,rel,n2;"
-            output = self.conn.execute(query, {"name": name})
+                query = f"MATCH (n1)-[rel:{rel_t}]->(n2) WHERE rel.name = $name RETURN n1,rel,n2;"
+                output = self.conn.execute(query, {"name": name})
 
-            formated_output = self.parse_query_quadruplets_output(output)
-        elif object == 'node':
-            node_t = self.config.params['table_type_map']['nodes']['forward'][object_type.value]
+                formated_output = self.parse_query_quadruplets_output(output)
+            elif object == 'node':
+                node_t = self.config.params['table_type_map']['nodes']['forward'][object_type.value]
 
-            query = f"MATCH (n:{node_t}) WHERE n.name = $name RETURN n;"
-            output = self.conn.execute(query, {"name": name})
+                query = f"MATCH (n:{node_t}) WHERE n.name = $name RETURN n;"
+                output = self.conn.execute(query, {"name": name})
 
-            formated_output = self.parse_query_nodes_output(output)
-        else:
-            raise ValueError
+                formated_output = self.parse_query_nodes_output(output)
+            else:
+                raise ValueError
+        finally:
+            self._lock.release()
 
         return formated_output
 
