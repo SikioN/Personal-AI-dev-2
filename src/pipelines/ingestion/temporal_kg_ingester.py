@@ -370,7 +370,6 @@ class TemporalKGIngester:
                 )
                 kg_errors += len(batch)
                 result.errors += len(batch)
-                result.added -= len(batch)  # undo optimistic count if set
 
         # Optionally update tkbc pickle files
         if update_tkbc:
