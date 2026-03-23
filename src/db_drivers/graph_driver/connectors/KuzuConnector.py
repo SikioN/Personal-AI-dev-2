@@ -135,20 +135,30 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
         # Wrap entire batch in one transaction — avoids per-execute auto-commit overhead
         # KuzuDB manages transactions via Cypher statements
         self.conn.execute("BEGIN TRANSACTION;")
+        created_nodes = set()
         try:
             for i, quadruplet in enumerate(quadruplets):
                 cur_info = creation_info.get(i, None)
-                if cur_info is None or cur_info['s_node']:
-                    insert_subj_query, p = self.create_node_query(quadruplet.start_node)
+                
+                s_node = quadruplet.start_node
+                if (cur_info is None or cur_info['s_node']) and s_node.id not in created_nodes:
+                    insert_subj_query, p = self.create_node_query(s_node)
                     self.conn.execute(insert_subj_query, p)
-                if cur_info is None or cur_info['e_node']:
-                    insert_obj_query, p = self.create_node_query(quadruplet.end_node)
+                    created_nodes.add(s_node.id)
+                    
+                e_node = quadruplet.end_node
+                if (cur_info is None or cur_info['e_node']) and e_node.id not in created_nodes:
+                    insert_obj_query, p = self.create_node_query(e_node)
                     self.conn.execute(insert_obj_query, p)
+                    created_nodes.add(e_node.id)
 
                 # Time node
-                if (cur_info is None or cur_info.get('t_node', False)) and quadruplet.time:
-                    insert_time_query, p = self.create_node_query(quadruplet.time)
-                    self.conn.execute(insert_time_query, p)
+                t_node = quadruplet.time
+                if (cur_info is None or cur_info.get('t_node', False)) and t_node:
+                    if t_node.id not in created_nodes:
+                        insert_time_query, p = self.create_node_query(t_node)
+                        self.conn.execute(insert_time_query, p)
+                        created_nodes.add(t_node.id)
 
                 insert_rel_query, p = self.create_rel_query(quadruplet)
                 self.conn.execute(insert_rel_query, p)
