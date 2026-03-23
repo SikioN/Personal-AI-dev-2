@@ -89,6 +89,14 @@ class KnowledgeGraphModel:
         """
         # 4.1: Neo4j is Source of Truth — never roll it back.
         # ChromaDB is a derived view; retry up to 3 times with exponential backoff.
+        
+        # Дедупликация: LLM может генерировать одинаковые (дублирующиеся) факты.
+        # Оставляем только уникальные по ID (отбрасываем полные дубликаты).
+        unique_quads = {}
+        for q in quadruplets:
+            unique_quads[q.id] = q
+        quadruplets = list(unique_quads.values())
+
         try:
             graph_create_info = self.graph_struct.create_quadruplets(quadruplets, status_bar=status_bar)
         except Exception as e:
@@ -110,7 +118,7 @@ class KnowledgeGraphModel:
         if last_exc is not None:
             _kg_logger.error(
                 "ChromaDB desync after 3 attempts — GraphDB is ahead. "
-                "Run re-sync to fix. Error: %s", last_exc
+                "Run re-sync to fix. Error: %s", last_exc, exc_info=True
             )
             raise RuntimeError(f"ChromaDB write failed (GraphDB intact): {last_exc}") from last_exc
 
