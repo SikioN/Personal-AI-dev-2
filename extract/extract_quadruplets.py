@@ -491,24 +491,25 @@ Extract factual quadruplets (subject, relation, object, time) from the text.
 
 Rules:
 1. Subject and Object must be named entities (persons, organizations, places, works, concepts).
-2. Relation must be a Wikidata property label (e.g. "spouse", "award received", "position held", "educated at", "employer", "member of", "country of citizenship").
+2. Relation must be a Wikidata property label (e.g. "spouse", "award received", "position held", "educated at", "employer", "member of", "country of citizenship", "has part" etc.).
 3. Time: use years only. If exact year unknown, omit. Format: {"start": "YYYY", "end": "YYYY"}.
    If a single year, set start == end. If open-ended (still active), use current year as end.
-4. Output ONLY a JSON array, no commentary.
+4. Output ONLY a valid JSON object with a single key "quadruplets" containing the array. Do not output anything else.
 
-Output format (strict JSON array):
-[
-  {
-    "s": "Subject Name",
-    "r": "relation label",
-    "o": "Object Name",
-    "t_start": "YYYY",
-    "t_end": "YYYY"
-  },
-  ...
-]
+Output format (strict JSON object):
+{
+  "quadruplets": [
+    {
+      "s": "Subject Name",
+      "r": "relation label",
+      "o": "Object Name",
+      "t_start": "YYYY",
+      "t_end": "YYYY"
+    }
+  ]
+}
 
-If no quadruplets found, return: []
+If no quadruplets found, return: {"quadruplets": []}
 """
 
 def chunk_text(text: str, max_chars: int = 6000) -> list[str]:
