@@ -149,7 +149,8 @@ class TemporalScorer:
         import torch.nn.functional as F
 
         self.model.train()
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
+        # Use Adagrad because TComplEx uses sparse embeddings, which are not supported by Adam
+        optimizer = torch.optim.Adagrad(self.model.parameters(), lr=lr)
         data = torch.tensor(train_data, dtype=torch.long, device=self.device)
         n = len(data)
         
