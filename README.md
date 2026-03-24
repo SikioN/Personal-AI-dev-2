@@ -408,25 +408,33 @@ sudo journalctl -u personal-ai-bot -f
 
 ## Добавление новых фактов в граф знаний
 
-### Через Telegram-бота
+Система поддерживает 2 основных способа загрузки новых документов и фактов. В обоих случаях данные экстрактируются через LLM и атомарно записываются в графовую (Kuzu/Neo4j) и векторную (ChromaDB) базы с дедупликацией.
 
-Команда `/ingest` — загрузить документ (PDF/DOCX/PPTX/TXT). Бот извлекает факты через LLM и добавляет их в граф.
+### Способ 1: Через Telegram-бота (UI)
+Отправьте команду `/ingest` или просто перетащите документ (PDF/DOCX/PPTX/TXT) в окно чата. Бот асинхронно в фоне извлекает факты через LLM и добавляет их в граф, отправляя статус-сообщения.
 
-### Через скрипт
+### Способ 2: Через терминал (CLI-скрипты)
+Процесс разделен на два этапа для гибкости (парсинг и загрузка):
 
+**Этап 1. Экстракция: Извлечение фактов из PDF/Текста**
+Срипт считывает папку с файлами и генерирует `facts.json` с помощью указанного в `.env` LLM-бэкенда.
 ```bash
 source .venv/bin/activate
+python extract/extract_quadruplets.py путь_к_папке_с_pdf --output new_facts.json
+```
 
-# Добавить факты в граф и ChromaDB:
+**Этап 2. Ингестия: Интеграция фактов в граф и векторную базу**
+```bash
+# Добавить извлеченные факты в граф и ChromaDB:
 python scripts/incremental_update.py --input new_facts.json
 
-# Добавить факты + переобучить TComplEx:
+# Добавить факты + переобучить TComplEx (очередь scoring):
 python scripts/incremental_update.py \
     --input new_facts.json \
     --tkbc-dir wikidata_big/kg/tkbc_processed_data/wikidata_big/ \
     --force-retrain --retrain-epochs 50
 
-# Только проверить формат (без записи):
+# Только проверить формат json (dry run, без записи):
 python scripts/incremental_update.py --input new_facts.json --dry-run
 ```
 
