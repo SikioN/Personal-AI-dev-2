@@ -371,7 +371,10 @@ class DocIngestionService:
                 ["passage: " + t for t in new_texts],
                 batch_size=64, normalize_embeddings=True,
             )
-            engine.embeddings = np.vstack([engine.embeddings, new_embs])
+            if getattr(engine.embeddings, "size", 0) == 0 or getattr(engine.embeddings, "ndim", 1) == 1:
+                engine.embeddings = new_embs
+            else:
+                engine.embeddings = np.vstack([engine.embeddings, new_embs])
 
         _append_stash(quadruplets)
         logger.info("In-memory: added %d quadruplets (stash updated)", len(new_tuples))

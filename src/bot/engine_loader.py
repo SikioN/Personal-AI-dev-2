@@ -461,7 +461,10 @@ def _load_inmemory_stash(engine: "SimpleInMemoryEngine") -> None:
             ["passage: " + t for t in new_texts],
             batch_size=64, normalize_embeddings=True,
         )
-        engine.embeddings = np.vstack([engine.embeddings, new_embs])
+        if getattr(engine.embeddings, "size", 0) == 0 or getattr(engine.embeddings, "ndim", 1) == 1:
+            engine.embeddings = new_embs
+        else:
+            engine.embeddings = np.vstack([engine.embeddings, new_embs])
     logger.info("Loaded %d facts from inmemory stash.", len(stash))
 
 
