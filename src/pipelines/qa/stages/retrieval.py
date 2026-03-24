@@ -188,25 +188,28 @@ class HybridRetriever:
                 for name in names:
                     if not name:
                         continue
+                    name = name.strip()
                     cyphers = []
+                    # For KuzuDB name queries, use CONTAINS instead of direct equality 
+                    # to handle partial matches and formatting discrepancies (spaces/dots/etc)
                     if rel_query_sanitized:
                         # Forward & Reverse
                         cyphers.append(
-                            "MATCH (n1:Entity)-[rel]->(n2:Entity) "
-                            "WHERE lower(n1.name) = lower($name) "
+                            "MATCH (n1)-[rel]->(n2) "
+                            "WHERE lower(n1.name) CONTAINS lower($name) "
                             "AND lower(rel.name) CONTAINS lower($rel) "
                             "RETURN n1, rel, n2 LIMIT 1000;"
                         )
                         cyphers.append(
-                            "MATCH (n1:Entity)-[rel]->(n2:Entity) "
-                            "WHERE lower(n2.name) = lower($name) "
+                            "MATCH (n1)-[rel]->(n2) "
+                            "WHERE lower(n2.name) CONTAINS lower($name) "
                             "AND lower(rel.name) CONTAINS lower($rel) "
                             "RETURN n1, rel, n2 LIMIT 1000;"
                         )
                     cyphers.append(
-                        "MATCH (n1:Entity)-[rel]->(n2:Entity) "
-                        "WHERE lower(n1.name) = lower($name) "
-                        "OR lower(n2.name) = lower($name) "
+                        "MATCH (n1)-[rel]->(n2) "
+                        "WHERE lower(n1.name) CONTAINS lower($name) "
+                        "OR lower(n2.name) CONTAINS lower($name) "
                         "RETURN n1, rel, n2 LIMIT 5000;"
                     )
                     
@@ -215,11 +218,20 @@ class HybridRetriever:
                             params = {"name": name}
                             if "$rel" in cypher:
                                 params["rel"] = rel_query_sanitized
+                            
+                            # Log the query for debugging
+                            logger.info("[KuzuDB] Executing name query: %s with params: %s", cypher, params)
+                            
                             result = connector.conn.execute(cypher, params)
+                            found_in_this_query = 0
                             for q in connector.parse_query_quadruplets_output(result):
+                                found_in_this_query += 1
                                 if q.id not in seen:
                                     quads.append(q)
                                     seen.add(q.id)
+                            
+                            if found_in_this_query > 0:
+                                logger.info("[KuzuDB] Found %d quads for name '%s'", found_in_this_query, name)
                         except Exception as e:
                             logger.warning(
                                 "[_get_graph_candidates] KuzuDB name query failed for %s (rel=%s): %s", name, rel_query_sanitized, e

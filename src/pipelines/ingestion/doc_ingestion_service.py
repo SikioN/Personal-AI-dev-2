@@ -296,8 +296,10 @@ class DocIngestionService:
             progress_callback(f"Сохранение {len(all_quadruplets)} фактов в граф...")
 
         if self._inmemory_engine is not None:
+            logger.info("[DocIngestionService] Finalizing ingestion to IN-MEMORY stash.")
             added = self._ingest_to_inmemory(all_quadruplets)
         else:
+            logger.info("[DocIngestionService] Finalizing ingestion to PRODUCTION Graph (Kuzu/Neo4j) + VectorDB.")
             result = self._ingest_to_production(all_quadruplets, tkbc_dir)
             added = result.added
 

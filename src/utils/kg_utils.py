@@ -124,9 +124,10 @@ class KGEntityMapper:
             str_id = self.fallback_name2id.get(key)
 
         # 2. DB Lookup — Fallback for entities not in text files
-        if not str_id and self._mode == 'db':
+        if not str_id and self._mode in ('neo4j', 'db'):
+            # Using CONTAINS for KuzuDB to handle partial matches/formatting discrepancies
             result = self._db.execute_query(
-                'MATCH (n) WHERE lower(n.name) = lower($name) RETURN n.str_id AS str_id, n.name AS name LIMIT 10',
+                'MATCH (n) WHERE lower(n.name) CONTAINS lower($name) RETURN n.str_id AS str_id, n.name AS name LIMIT 10',
                 params={'name': name}
             )
             if result:
@@ -151,7 +152,7 @@ class KGEntityMapper:
             name = self.fallback_id2name.get(str_id)
 
         # 2. DB Lookup — Fallback for entities not in text files
-        if not name:
+        if not name and self._mode in ('neo4j', 'db'):
             result = self._db.execute_query(
                 'MATCH (n) WHERE n.str_id = $str_id RETURN n.name AS name LIMIT 1',
                 params={'str_id': str_id}
@@ -182,15 +183,17 @@ class KGEntityMapper:
                         break
             return matches
 
-        # Neo4j mode — try fulltext index first
+        # Neo4j mode — try fulltext index first (skip if Kuzu)
         try:
-            result = self._db.execute_query(
-                'CALL db.index.fulltext.queryNodes("entity_name_aliases", $query) '
-                'YIELD node RETURN node.name AS name LIMIT $limit',
-                params={'query': query, 'limit': limit}
-            )
-            if result:
-                return [r['name'] for r in result]
+            is_kuzu = getattr(self._db, 'db_vendor', 'neo4j') == 'kuzu'
+            if not is_kuzu:
+                result = self._db.execute_query(
+                    'CALL db.index.fulltext.queryNodes("entity_name_aliases", $query) '
+                    'YIELD node RETURN node.name AS name LIMIT $limit',
+                    params={'query': query, 'limit': limit}
+                )
+                if result:
+                    return [r['name'] for r in result]
         except Exception:
             pass
 

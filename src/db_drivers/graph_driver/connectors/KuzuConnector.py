@@ -1,8 +1,11 @@
 from typing import List, Dict, Union
 import kuzu
+import logging
 import json
 import os
 import threading
+
+logger = logging.getLogger(__name__)
 
 from ....utils.errors import ReturnInfo
 from ....utils.data_structs import Node, NodeCreator, NODES_TYPES_MAP, RelationCreator, QuadrupletCreator, Relation, RELATIONS_TYPES_MAP, NodeType, RelationType
@@ -35,6 +38,7 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
     def __init__(self, config: GraphDBConnectionConfig = DEFAULT_KUZU_CONFIG) -> None:
         self.config = config
         self._lock = threading.Lock()
+        self.db_vendor = 'kuzu'
 
     def open_connection(self) -> ReturnInfo:
         load_path = self.config.params['path']
@@ -55,6 +59,7 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
         if not os.path.exists(load_path):
             print(f"warning: graph-dump '{load_path}' doesn't exist. creating empty graph-store")
 
+        logger.info("[KuzuConnector] Opening KuzuDB at: %s", os.path.abspath(load_path))
         self.db = kuzu.Database(load_path, buffer_pool_size=self.config.params['buffer_pool_size'])
         self.conn = kuzu.Connection(self.db)
 
@@ -147,11 +152,9 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
         if len(quadruplets) != len(unique_ids):
             raise ValueError
 
-        # Wrap entire batch in one transaction — avoids per-execute auto-commit overhead
-        # KuzuDB manages transactions via Cypher statements
+        # Auto-commit mode for reliability across Kuzu versions
         self._lock.acquire()
         try:
-            self.conn.execute("BEGIN TRANSACTION;")
             created_nodes = set()
             for i, quadruplet in enumerate(quadruplets):
                 cur_info = creation_info.get(i, None)
@@ -179,12 +182,17 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
                 insert_rel_query, p = self.create_rel_query(quadruplet)
                 self.conn.execute(insert_rel_query, p)
             
-            self.conn.execute("COMMIT;")
-        except Exception:
-            try:
-                self.conn.execute("ROLLBACK;")
-            except Exception:
-                pass
+            # Diagnostic log: show what we actually wrote
+            sample_names = [q.start_node.name for q in quadruplets[:3]]
+            
+            # Count total nodes to verify growth
+            count_res = self.conn.execute("MATCH (n) RETURN count(n) AS cnt;").get_as_df()
+            total_nodes = int(count_res['cnt'][0]) if not count_res.empty else 0
+            
+            logger.info("[KuzuDB] Transaction complete: %d quads added. Samples: %s. Total nodes in DB: %d", 
+                        len(quadruplets), sample_names, total_nodes)
+        except Exception as e:
+            logger.error("[KuzuDB] Transaction failed: %s", e)
             raise
         finally:
             self._lock.release()
