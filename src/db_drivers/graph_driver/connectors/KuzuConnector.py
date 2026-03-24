@@ -39,6 +39,19 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
     def open_connection(self) -> ReturnInfo:
         load_path = self.config.params['path']
 
+        # Kuzu >= 0.6 stores its database as a FILE, not a directory.
+        # If a legacy empty directory exists at this path, remove it automatically.
+        if os.path.isdir(load_path):
+            try:
+                os.rmdir(load_path)  # only removes if empty — safe
+                print(f"[KuzuConnector] Removed empty legacy directory at '{load_path}' (Kuzu >=0.6 uses a file path)")
+            except OSError:
+                raise RuntimeError(
+                    f"[KuzuConnector] '{load_path}' is a non-empty directory. "
+                    f"Kuzu >=0.6 requires a FILE path, not a directory. "
+                    f"Please move or delete it manually and retry."
+                )
+
         if not os.path.exists(load_path):
             print(f"warning: graph-dump '{load_path}' doesn't exist. creating empty graph-store")
 

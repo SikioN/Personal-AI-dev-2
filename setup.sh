@@ -64,11 +64,8 @@ echo -e "\n${BOLD}[4] Creating required directories${NC}"
 DIRS=(
     "extract_data"
     "extract/new_docs"
-    "data/kuzu_db"
     "data/graph_structures/vectorized_nodes/default"
     "data/graph_structures/vectorized_quadruplets/default"
-    "models/wikidata_finetuned_remote/wikidata_finetuned"
-    "models/cronkgqa"
     "logs"
 )
 for d in "${DIRS[@]}"; do

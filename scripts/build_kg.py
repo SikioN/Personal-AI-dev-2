@@ -104,7 +104,7 @@ def main():
         or os.path.join(ROOT_DIR, "models/wikidata_finetuned_remote/wikidata_finetuned")
     )
     embedder_cfg = EmbedderModelConfig(
-        model_name_or_path=model_path if os.path.exists(model_path)
+        model_name_or_path=model_path if os.path.exists(os.path.join(model_path, "config.json"))
         else "intfloat/multilingual-e5-small"
     )
     emb_cfg = EmbeddingsModelConfig(
