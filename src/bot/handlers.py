@@ -68,7 +68,8 @@ COMMANDS_TEXT = (
     "*Документы и обучение*\n"
     "*/ingest* — обработать документы из папки new\\_docs\n"
     "*/ingest force* — переобработать уже загруженные документы\n"
-    "*/retrain* — обновить модель вручную\n\n"
+    "*/retrain* — обновить модель вручную\n"
+    "*/clear_kg* — полная очистка базы знаний \\(требует подтверждения\\)\n\n"
     "*Настройки*\n"
     "*/settings* — текущие параметры поиска\n"
     "*/set top\\_k N* — количество результатов \\(1–15, по умолчанию 5\\)\n"
@@ -118,6 +119,13 @@ def retrain_confirm_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="Да, начать", callback_data="menu_retrain"),
         InlineKeyboardButton(text="Отмена",     callback_data="menu_cancel"),
+    ]])
+
+
+def clear_kg_confirm_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="Да, очистить всё", callback_data="menu_clear_kg", style="danger"),
+        InlineKeyboardButton(text="Отмена",            callback_data="menu_clear_cancel"),
     ]])
 
 
@@ -584,6 +592,21 @@ async def cmd_retrain(message: Message):
     await _do_retrain(message)
 
 
+@router.message(Command("clear_kg"))
+async def cmd_clear_kg(message: Message):
+    warn_text = (
+        "⚠️ *ВНИМАНИЕ: ПОЛНАЯ ОЧИСТКА*\n\n"
+        "База знаний будет полностью очищена\\. Вы не сможете получать ответы на вопросы, "
+        "пока не загрузите новые документы и не восстановите граф\\.\n\n"
+        "Вы уверены, что хотите продолжить?"
+    )
+    await message.answer(
+        warn_text,
+        parse_mode="MarkdownV2",
+        reply_markup=clear_kg_confirm_keyboard()
+    )
+
+
 @router.callback_query(F.data.startswith("menu_"))
 async def handle_menu(query: CallbackQuery):
     await query.answer()
@@ -600,6 +623,21 @@ async def handle_menu(query: CallbackQuery):
         await _do_retrain(query.message)
     elif action == "cancel":
         await query.message.edit_text("Переобучение отменено\\.", parse_mode="MarkdownV2")
+    elif action == "clear_kg":
+        await query.message.edit_text("Выполняю полную очистку баз данных\\.\\.\\.", parse_mode="MarkdownV2")
+        async with _get_semaphore():
+            try:
+                engine, _, kg_model = await asyncio.to_thread(_get_engine_and_navigator)
+                if kg_model:
+                    await asyncio.to_thread(kg_model.clear)
+                    await query.message.edit_text("✅ База знаний полностью очищена\\.", parse_mode="MarkdownV2")
+                else:
+                    await query.message.edit_text("Очистка доступна только в production режиме\\.", parse_mode="MarkdownV2")
+            except Exception as e:
+                logger.exception("Error in /clear_kg")
+                await query.message.edit_text(f"Ошибка при очистке: `{_esc(str(e)[:200])}`", parse_mode="MarkdownV2")
+    elif action == "clear_cancel":
+        await query.message.edit_text("Очистка отменена\\.", parse_mode="MarkdownV2")
 
 
 _ALLOWED_EXTENSIONS = {".pdf", ".docx", ".pptx", ".txt"}
