@@ -69,7 +69,7 @@ COMMANDS_TEXT = (
     "*/ingest* — обработать документы из папки new\\_docs\n"
     "*/ingest force* — переобработать уже загруженные документы\n"
     "*/retrain* — обновить модель вручную\n"
-    "*/clear_kg* — полная очистка базы знаний \\(требует подтверждения\\)\n\n"
+    "*/clear\\_kg* — полная очистка базы знаний \\(требует подтверждения\\)\n\n"
     "*Настройки*\n"
     "*/settings* — текущие параметры поиска\n"
     "*/set top\\_k N* — количество результатов \\(1–15, по умолчанию 5\\)\n"
@@ -595,7 +595,7 @@ async def cmd_retrain(message: Message):
 @router.message(Command("clear_kg"))
 async def cmd_clear_kg(message: Message):
     warn_text = (
-        "⚠️ *ВНИМАНИЕ: ПОЛНАЯ ОЧИСТКА*\n\n"
+        "*ВНИМАНИЕ: ПОЛНАЯ ОЧИСТКА*\n\n"
         "База знаний будет полностью очищена\\. Вы не сможете получать ответы на вопросы, "
         "пока не загрузите новые документы и не восстановите граф\\.\n\n"
         "Вы уверены, что хотите продолжить?"
@@ -630,7 +630,7 @@ async def handle_menu(query: CallbackQuery):
                 engine, _, kg_model = await asyncio.to_thread(_get_engine_and_navigator)
                 if kg_model:
                     await asyncio.to_thread(kg_model.clear)
-                    await query.message.edit_text("✅ База знаний полностью очищена\\.", parse_mode="MarkdownV2")
+                    await query.message.edit_text("База знаний полностью очищена\\.", parse_mode="MarkdownV2")
                 else:
                     await query.message.edit_text("Очистка доступна только в production режиме\\.", parse_mode="MarkdownV2")
             except Exception as e:
