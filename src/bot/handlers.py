@@ -69,7 +69,7 @@ COMMANDS_TEXT = (
     "*/ingest* — обработать документы из папки new\\_docs\n"
     "*/ingest force* — переобработать уже загруженные документы\n"
     "*/retrain* — обновить модель вручную\n"
-    "*/clear\\_kg* — полная очистка базы знаний \\(требует подтверждения\\)\n\n"
+    "*/clear* — полная очистка базы знаний \\(требует подтверждения\\)\n\n"
     "*Настройки*\n"
     "*/settings* — текущие параметры поиска\n"
     "*/set top\\_k N* — количество результатов \\(1–15, по умолчанию 5\\)\n"
@@ -592,7 +592,7 @@ async def cmd_retrain(message: Message):
     await _do_retrain(message)
 
 
-@router.message(Command("clear_kg"))
+@router.message(Command("clear"))
 async def cmd_clear_kg(message: Message):
     warn_text = (
         "*ВНИМАНИЕ: ПОЛНАЯ ОЧИСТКА*\n\n"
