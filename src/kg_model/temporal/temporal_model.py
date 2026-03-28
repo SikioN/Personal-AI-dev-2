@@ -1,9 +1,47 @@
 
+import logging
 import torch
 import pickle
 import os
 from typing import Dict, Optional, Tuple
 from .tkbc_models import TComplEx
+
+logger = logging.getLogger(__name__)
+
+
+def _compute_optimal_batch_size(
+    n_entities: int,
+    rank: int,
+    device: str,
+    safety_factor: float = 0.4,
+) -> int:
+    """Auto-compute batch size for TComplEx training on given device.
+
+    With BF16: ~2 bytes/element for activation tensor (batch × n_entities).
+    A100 80GB can handle large batches; clamped to power-of-2 for CUDA efficiency.
+    """
+    if "cuda" not in device:
+        return 1000  # CPU: conservative default
+
+    try:
+        gpu_idx = int(device.split(":")[-1]) if ":" in device else 0
+        total_mem = torch.cuda.get_device_properties(gpu_idx).total_memory
+    except Exception:
+        total_mem = 80 * 1024 ** 3  # fallback: assume A100 80GB
+
+    # Estimate param memory (float32): 3 embedding tables × n_entities × 2*rank × 4 bytes
+    param_mem = 3 * n_entities * 2 * rank * 4
+    # Usable memory for activations = total × safety_factor − params − gradients
+    usable = max(0, total_mem * safety_factor - 2 * param_mem)
+    # Activation cost per batch item: n_entities × 2 bytes (BF16)
+    cost_per_item = n_entities * 2
+    raw_bs = int(usable / cost_per_item) if cost_per_item > 0 else 1000
+    raw_bs = max(256, min(raw_bs, 65536))
+    # Round down to nearest power-of-2 for CUDA efficiency
+    bs = 1
+    while bs * 2 <= raw_bs:
+        bs *= 2
+    return bs
 
 class TemporalScorer:
     def __init__(self, 
@@ -139,22 +177,79 @@ class TemporalScorer:
 
             return raw_score.item()
 
-    def finetune(self, train_data, epochs: int = 50, batch_size: int = 1000,
-                 lr: float = 1e-3) -> None:
+    def finetune(
+        self,
+        train_data,
+        epochs: int = 50,
+        batch_size: int = None,
+        lr: float = 1e-3,
+        num_gpus: int = None,
+        use_amp: bool = True,
+    ) -> None:
         """
         Gradient descent loop on full train_data (numpy array of (s,r,o,t) ints).
         Uses the regularizer loss from TComplEx.forward() as the training signal.
+
+        Args:
+            batch_size: None = auto-compute from GPU memory.
+            num_gpus: None = auto-detect from torch.cuda.device_count().
+            use_amp: Enable BF16 mixed precision on A100 (ignored on CPU/MPS).
         """
-        import numpy as np
         import torch.nn.functional as F
 
-        self.model.train()
-        # Use Adagrad because TComplEx uses sparse embeddings, which are not supported by Adam
-        optimizer = torch.optim.Adagrad(self.model.parameters(), lr=lr)
+        n = len(train_data)
+        if n == 0:
+            return
+
+        # ── 1. Determine device and GPU count ─────────────────────────────────
+        is_cuda = "cuda" in self.device
+        if num_gpus is None:
+            num_gpus = torch.cuda.device_count() if is_cuda else 0
+
+        # ── 2. Auto batch_size ────────────────────────────────────────────────
+        rank = self.model.embeddings[0].weight.shape[1] // 2
+        n_ent = self.model.embeddings[0].weight.shape[0]
+        if batch_size is None:
+            batch_size = _compute_optimal_batch_size(n_ent, rank, self.device)
+            logger.info("[TComplEx] Auto batch_size=%d for device=%s", batch_size, self.device)
+
+        # ── 3. Switch to dense embeddings for multi-GPU compatibility ─────────
+        _was_sparse = {}
+        if num_gpus > 1 and is_cuda:
+            for i, emb in enumerate(self.model.embeddings):
+                _was_sparse[i] = emb.sparse
+                if emb.sparse:
+                    emb.sparse = False
+
+        # ── 4. Wrap with DataParallel if multiple GPUs ────────────────────────
+        train_model = self.model
+        device_ids = list(range(num_gpus)) if num_gpus > 1 and is_cuda else None
+        if device_ids:
+            train_model = torch.nn.DataParallel(self.model, device_ids=device_ids)
+            logger.info("[TComplEx] Using DataParallel on %d GPUs: %s", num_gpus, device_ids)
+            batch_size = batch_size * num_gpus
+            logger.info("[TComplEx] Effective batch_size=%d", batch_size)
+
+        # ── 5. TF32 + BF16 AMP setup ──────────────────────────────────────────
+        if is_cuda:
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
+
+        amp_dtype = torch.bfloat16 if (
+            use_amp and is_cuda and torch.cuda.is_bf16_supported()
+        ) else None
+        use_amp_actual = amp_dtype is not None
+        if use_amp_actual:
+            logger.info("[TComplEx] Using BF16 AMP autocast")
+
+        # ── 6. Optimizer ───────────────────────────────────────────────────────
+        underlying = train_model.module if hasattr(train_model, 'module') else train_model
+        optimizer = torch.optim.Adagrad(underlying.parameters(), lr=lr)
+
+        # ── 7. Training loop ───────────────────────────────────────────────────
+        train_model.train()
         data = torch.tensor(train_data, dtype=torch.long, device=self.device)
-        n = len(data)
-        
-        reg_weight = 1e-2 # Standard TKBC L3 weight
+        reg_weight = 1e-2
 
         for epoch in range(epochs):
             perm = torch.randperm(n, device=self.device)
@@ -162,27 +257,43 @@ class TemporalScorer:
             steps = 0
             for i in range(0, n, batch_size):
                 batch = data[perm[i:i + batch_size]]
-                optimizer.zero_grad()
-                
-                # forward returns: (predictions, regularizer_tuple, time_weights)
-                # predictions shape is (batch_size, num_entities)
-                predictions, regularizer, _ = self.model.forward(batch)
-                
-                # Targets are rhs objects (index 2 in the batch 4-tuple)
-                targets = batch[:, 2]
-                ce_loss = F.cross_entropy(predictions, targets)
-                
-                # l3 regularization
-                l3_reg = sum(torch.sum(torch.abs(r) ** 3) for r in regularizer)
-                
-                loss = ce_loss + reg_weight * l3_reg
+                optimizer.zero_grad(set_to_none=True)
+
+                if use_amp_actual:
+                    with torch.autocast(device_type="cuda", dtype=amp_dtype):
+                        predictions, regularizer, _ = train_model(batch)
+                        targets = batch[:, 2]
+                        ce_loss = F.cross_entropy(predictions, targets)
+                        l3_reg = sum(torch.sum(torch.abs(r) ** 3) for r in regularizer)
+                        loss = ce_loss + reg_weight * l3_reg
+                else:
+                    predictions, regularizer, _ = train_model(batch)
+                    targets = batch[:, 2]
+                    ce_loss = F.cross_entropy(predictions, targets)
+                    l3_reg = sum(torch.sum(torch.abs(r) ** 3) for r in regularizer)
+                    loss = ce_loss + reg_weight * l3_reg
+
                 loss.backward()
                 optimizer.step()
                 epoch_loss += loss.item()
                 steps += 1
-            if (epoch + 1) % 10 == 0:
-                print(f"  finetune epoch {epoch + 1}/{epochs}, loss={epoch_loss / max(steps, 1):.4f}")
+
+            if (epoch + 1) % 10 == 0 or epoch == 0:
+                logger.info(
+                    "[TComplEx] epoch %d/%d  loss=%.4f  bs=%d  amp=%s",
+                    epoch + 1, epochs,
+                    epoch_loss / max(steps, 1),
+                    batch_size,
+                    "bf16" if use_amp_actual else "fp32",
+                )
+
+        # ── 8. Restore sparse embeddings for inference ─────────────────────────
+        if _was_sparse:
+            for i, emb in enumerate(self.model.embeddings):
+                emb.sparse = _was_sparse.get(i, emb.sparse)
+
         self.model.eval()
+        logger.info("[TComplEx] Fine-tuning complete.")
 
     def save(self, path: str) -> None:
         """Save current model weights to checkpoint file."""

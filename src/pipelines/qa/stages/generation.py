@@ -117,7 +117,7 @@ class GenerationStage:
 
             if not raw_ans:
                 return GenerationResult(
-                    answer='Unknown',
+                    answer=None,
                     raw_llm_output='',
                     decoded_qid=None,
                     context_used=ctx,
@@ -160,7 +160,7 @@ class GenerationStage:
             import logging as _logging
             _logging.getLogger(__name__).error("[GenerationStage] Execution failed: %s", e, exc_info=True)
             return GenerationResult(
-                answer='Unknown',
+                answer=None,
                 raw_llm_output=str(e),
                 decoded_qid=None,
                 context_used=ctx if 'ctx' in locals() else '',

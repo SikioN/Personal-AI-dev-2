@@ -59,7 +59,8 @@ def format_status(neo4j_ok: Optional[bool], chroma_ok: Optional[bool], llm_backe
                   device: str, nodes: int, quads: int,
                   ingested: int = 0, mode: str = "production",
                   tcomplex_ok: Optional[bool] = None,
-                  graph_backend: str = "neo4j") -> str:
+                  graph_backend: str = "neo4j",
+                  facts_since_last_retrain: int = 0) -> str:
     neo4j_icon  = "[OK]"  if neo4j_ok  is True  else ("[ERR]" if neo4j_ok  is False else "[N/A]")
     chroma_icon = "[OK]"  if chroma_ok is True  else ("[ERR]" if chroma_ok is False else "[N/A]")
     tc_icon     = "[OK]"  if tcomplex_ok is True else ("[ERR]" if tcomplex_ok is False else "[N/A]")
@@ -70,6 +71,12 @@ def format_status(neo4j_ok: Optional[bool], chroma_ok: Optional[bool], llm_backe
     chroma_label = "ChromaDB \\(N/A\\)" if chroma_ok is None else "ChromaDB"
     tc_label     = "TComplEx \\(N/A\\)" if tcomplex_ok is None else "TComplEx"
     ingested_line = f"\nIngested: `{ingested}`" if ingested > 0 else ""
+    retrain_line = ""
+    if facts_since_last_retrain > 0:
+        retrain_line = (
+            f"\n[WARN] С последнего retrain: `{facts_since_last_retrain}` фактов "
+            f"\\— рекомендуется /retrain"
+        )
     return (
         f"*Статус системы*\n\n"
         f"Mode: `{_esc(mode)}`\n"
@@ -80,6 +87,7 @@ def format_status(neo4j_ok: Optional[bool], chroma_ok: Optional[bool], llm_backe
         f"Device: `{_esc(device)}`\n"
         f"Graph: `{nodes}` \\| `{quads}` квадруплетов"
         f"{ingested_line}"
+        f"{retrain_line}"
     )
 
 
@@ -99,6 +107,7 @@ def format_ingest_result(stats: dict, use_inmemory: bool) -> str:
     errors = stats.get("errors", 0)
     files_processed = stats.get("files_processed", 0)
     files_skipped = stats.get("files_skipped", 0)
+    facts_since_retrain = stats.get("facts_since_last_retrain", 0)
     lines = [
         "*Результат обработки документов*\n",
         f"[OK] Добавлено фактов: `{added}`",
@@ -108,6 +117,11 @@ def format_ingest_result(stats: dict, use_inmemory: bool) -> str:
         lines.append(f"[SKIP] Дубликатов пропущено: `{skipped}`")
     if errors:
         lines.append(f"[WARN] Ошибок: `{errors}`")
+    if facts_since_retrain > 0:
+        lines.append(
+            f"\n[WARN] С последнего retrain: `{facts_since_retrain}` фактов "
+            f"\\— рекомендуется /retrain"
+        )
     if use_inmemory:
         lines.append("\n[INFO] Режим in\\-memory: данные сохранены в памяти \\(не в Neo4j\\)")
     return "\n".join(lines)

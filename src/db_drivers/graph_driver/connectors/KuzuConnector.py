@@ -14,7 +14,7 @@ from ..utils import GraphDBConnectionConfig, AbstractGraphDatabaseConnection
 from ....utils import Quadruplet, NodeType
 
 DEFAULT_KUZU_CONFIG = GraphDBConnectionConfig(
-    params={'path': '../../kuzu_volume', 'buffer_pool_size': 1024**3,
+    params={'path': '../../kuzu_volume', 'buffer_pool_size': 1024 * 1024 * 512,
             'schema': [
                 "CREATE NODE TABLE IF NOT EXISTS object (str_id STRING, name STRING, prop MAP(STRING, STRING), PRIMARY KEY(str_id));",
                 "CREATE NODE TABLE IF NOT EXISTS hyper (str_id STRING, name STRING, prop MAP(STRING, STRING), PRIMARY KEY(str_id));",
@@ -43,21 +43,10 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
     def open_connection(self) -> ReturnInfo:
         load_path = self.config.params['path']
 
-        # Kuzu >= 0.6 stores its database as a FILE, not a directory.
-        # If a legacy empty directory exists at this path, remove it automatically.
-        if os.path.isdir(load_path):
-            try:
-                os.rmdir(load_path)  # only removes if empty — safe
-                print(f"[KuzuConnector] Removed empty legacy directory at '{load_path}' (Kuzu >=0.6 uses a file path)")
-            except OSError:
-                raise RuntimeError(
-                    f"[KuzuConnector] '{load_path}' is a non-empty directory. "
-                    f"Kuzu >=0.6 requires a FILE path, not a directory. "
-                    f"Please move or delete it manually and retry."
-                )
-
+        # Kuzu stores its database in a directory.
         if not os.path.exists(load_path):
-            print(f"warning: graph-dump '{load_path}' doesn't exist. creating empty graph-store")
+            os.makedirs(load_path, exist_ok=True)
+            logger.info("[KuzuConnector] Created new database directory at: %s", os.path.abspath(load_path))
 
         logger.info("[KuzuConnector] Opening KuzuDB at: %s", os.path.abspath(load_path))
         self.db = kuzu.Database(load_path, buffer_pool_size=self.config.params['buffer_pool_size'])
@@ -127,10 +116,11 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
         query = (
             f"MATCH (s:{s_type}), (o:{o_type}) "
             f"WHERE s.str_id = $s_id AND o.str_id = $o_id "
-            f"CREATE (s)-[rel:{rel_type} {{ "
-            f"name: $rel_name, t_id: $t_id, str_id: $r_id, "
-            f"prop: map($prop_keys, $prop_values) "
-            f"}}]->(o)"
+            f"MERGE (s)-[rel:{rel_type} {{t_id: $t_id}}]->(o) "
+            f"ON CREATE SET rel.name = $rel_name, rel.str_id = $r_id, "
+            f"rel.prop = map($prop_keys, $prop_values) "
+            f"ON MATCH SET rel.name = $rel_name, rel.str_id = $r_id, "
+            f"rel.prop = map($prop_keys, $prop_values)"
         )
         params = {
             "s_id": s_id,
@@ -221,15 +211,12 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
             if type(t_id) is not str:
                 raise ValueError
 
-        for i, t_id in enumerate(ids):
-            self.conn.execute(
-                'MATCH (s_node)-[rel]->(e_node) WHERE rel.t_id = $tid RETURN s_node.str_id AS sn_id, e_node.str_id AS en_id;',
-                {"tid": t_id}
-            )
-            self.conn.execute(
-                'MATCH (s_node)-[rel]->(e_node) WHERE rel.t_id = $tid DELETE rel;',
-                {"tid": t_id}
-            )
+        with self._lock:
+            for i, t_id in enumerate(ids):
+                self.conn.execute(
+                    'MATCH (s_node)-[rel]->(e_node) WHERE rel.t_id = $tid DELETE rel;',
+                    {"tid": t_id}
+                )
 
 
     def read_by_name(self, name: str, object_type: Union[RelationType, NodeType], object: str = 'relation') -> List[Union[Quadruplet, Node]]:
@@ -326,22 +313,24 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
 
         str_accepted_nodes = ''.join(list(map(lambda tpe: f':{tpe.value}', accepted_n_types)))
 
-        raw_nodes = self.conn.execute(
-            f'MATCH (a)-[r]-(b{str_accepted_nodes}) WHERE a.str_id = $bid RETURN b;',
-            {"bid": base_node_id}
-        )
+        with self._lock:
+            raw_nodes = self.conn.execute(
+                f'MATCH (a)-[r]-(b{str_accepted_nodes}) WHERE a.str_id = $bid RETURN b;',
+                {"bid": base_node_id}
+            )
         formated_nodes = [node['str_id'] for node in raw_nodes.get_as_df()['b']]
         return formated_nodes
 
     def get_nodes_shared_ids(self, node1_id: str, node2_id: str, id_type: str = 'both') -> List[Dict[str, str]]:
-        r1 = self.conn.execute(
-            "MATCH (a)-[r]-(b) WHERE a.str_id = $id RETURN b.str_id AS bid",
-            {"id": node1_id}
-        ).get_as_df()
-        r2 = self.conn.execute(
-            "MATCH (a)-[r]-(b) WHERE a.str_id = $id RETURN b.str_id AS bid",
-            {"id": node2_id}
-        ).get_as_df()
+        with self._lock:
+            r1 = self.conn.execute(
+                "MATCH (a)-[r]-(b) WHERE a.str_id = $id RETURN b.str_id AS bid",
+                {"id": node1_id}
+            ).get_as_df()
+            r2 = self.conn.execute(
+                "MATCH (a)-[r]-(b) WHERE a.str_id = $id RETURN b.str_id AS bid",
+                {"id": node2_id}
+            ).get_as_df()
         if r1.empty or r2.empty or 'bid' not in r1.columns:
             return []
         shared = set(r1['bid'].tolist()) & set(r2['bid'].tolist())
@@ -435,14 +424,14 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
         
     def execute_query(self, query: str, db_flag: bool = True, params: dict = None) -> list:
         try:
-            result = self.conn.execute(query, params or {})
+            with self._lock:
+                result = self.conn.execute(query, params or {})
             df = result.get_as_df()
             if df.empty:
                 return []
             return df.to_dict('records')
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning("KuzuConnector.execute_query failed: %s", e)
+            logger.warning("KuzuConnector.execute_query failed: %s", e)
             return []
 
     def clear(self) -> None:

@@ -76,9 +76,10 @@ def main():
     logger.info(f"ChromaDB nodes: {nodes_path}")
     logger.info(f"ChromaDB quads: {quads_path}")
 
-    # KuzuDB — same schema as DEFAULT_KUZU_CONFIG, override path only
+    # KuzuDB — fallback to 512MB buffer pool if not in env
+    bps = int(os.environ.get("KUZU_BUFFER_POOL_SIZE", 1024 * 1024 * 512))
     kuzu_cfg = GraphDBConnectionConfig(
-        params=dict(DEFAULT_KUZU_CONFIG.params, path=kuzu_path)
+        params={**DEFAULT_KUZU_CONFIG.params, 'path': kuzu_path, 'buffer_pool_size': bps}
     )
     graph_driver_cfg = GraphDriverConfig(db_vendor="kuzu", db_config=kuzu_cfg)
 
@@ -179,7 +180,7 @@ def main():
         action.append("ChromaDB")
     logger.info(f"Building: {' + '.join(action)} ({total:,} quadruplets, batch={BATCH})...")
 
-    all_quad_objs = []
+
 
     for start in range(0, total, BATCH):
         batch = raw_quads[start : start + BATCH]
@@ -205,7 +206,8 @@ def main():
             if need_kuzu:
                 db_conn.create(quad_objs)
             if need_chroma:
-                all_quad_objs.extend(quad_objs)
+                # Ingest into ChromaDB immediately to avoid storing 328k objects in RAM
+                kg_model.embeddings_struct.create_quadruplets(quad_objs, batch_size=128, status_bar=False)
 
         if (start // BATCH) % 5 == 0:
             done = min(start + BATCH, total)
@@ -215,10 +217,8 @@ def main():
         final_counts = db_conn.count_items()
         logger.info(f"KuzuDB populated: {final_counts}")
 
-    # ── Populate ChromaDB ─────────────────────────────────────────────────────
+    # ── Populate ChromaDB (Finished in loop) ──────────────────────────────────
     if need_chroma:
-        logger.info(f"Embedding {len(all_quad_objs):,} quadruplets into ChromaDB (batch_size=128)...")
-        kg_model.embeddings_struct.create_quadruplets(all_quad_objs, batch_size=128)
         chroma_final = kg_model.embeddings_struct.count_items()
         logger.info(f"ChromaDB populated: {chroma_final}")
 

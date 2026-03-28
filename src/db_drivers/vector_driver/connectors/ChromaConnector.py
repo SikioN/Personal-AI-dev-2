@@ -21,7 +21,7 @@ from ..utils import VectorDBConnectionConfig, AbstractVectorDatabaseConnection, 
 logging.getLogger("chromadb").setLevel(logging.CRITICAL)
 
 DEFAULT_CHROMA_CONFIG = VectorDBConnectionConfig(
-    params={"hnsw:space": "ip","hnsw:M": 4096},
+    params={"hnsw:space": "ip", "hnsw:M": 32, "hnsw:construction_ef": 200, "hnsw:search_ef": 100},
     conn={'path':'../data/graph_structures/default_vectorstore'})
 
 class ChromaConnection(AbstractVectorDatabaseConnection):
@@ -44,8 +44,7 @@ class ChromaConnection(AbstractVectorDatabaseConnection):
             self.clear()
 
     def is_open(self) -> bool:
-        # TODO
-        pass
+        return self.client is not None and self.collection is not None
 
     def close_connection(self) -> ReturnInfo:
         # 3.4: explicitly close the PersistentClient to flush WAL before GC
@@ -113,10 +112,12 @@ class ChromaConnection(AbstractVectorDatabaseConnection):
         if len(items) != len(unique_ids):
             raise ValueError
 
-        for item in items:
-            if self.item_exist(item.id):
-                self.delete([item.id])
-            self.create([item])
+        self.collection.upsert(
+            documents=[i.document for i in items],
+            embeddings=[i.embedding for i in items],
+            metadatas=[i.metadata if i.metadata else {} for i in items],
+            ids=[i.id for i in items],
+        )
 
     def delete(self, ids: List[str]) -> None:
         # validation
@@ -132,7 +133,7 @@ class ChromaConnection(AbstractVectorDatabaseConnection):
             includes: List[str]  = ['embeddings', 'documents', 'metadatas']) -> List[List[Tuple[float, VectorDBInstance]]]:
         # validating
         if len(query_instances) < 1:
-            return ValueError
+            raise ValueError("query_instances must not be empty")
         for inst in query_instances:
             if type(inst.embedding) in [torch.Tensor, np.ndarray]:
                 raise ValueError

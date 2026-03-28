@@ -192,7 +192,13 @@ class EmbeddingsModel:
             torch.cuda.empty_cache()
         elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
             torch.mps.empty_cache()
-        embs = self.embedder.encode_passages(stringified_instances, batch_size=16)
+        if torch.cuda.is_available():
+            _emb_batch = 512
+        elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            _emb_batch = 64
+        else:
+            _emb_batch = 32
+        embs = self.embedder.encode_passages(stringified_instances, batch_size=_emb_batch)
         formated_instances = [VectorDBInstance(id=id, document=doc, embedding=emb, metadata={'id': id, **metad})
                             for id, doc, emb, metad in zip(ids, stringified_instances, embs, metadatas)]
         self.vectordbs[db_type].create(formated_instances)

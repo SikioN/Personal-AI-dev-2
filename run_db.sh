@@ -4,7 +4,8 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-RED='\033[0;31m'; YELLOW='\033[1;33m'; GREEN='\033[0;32m'; BOLD='\033[1m'; NC='\033[0m'
+RED='\033[0;31m'; YELLOW='\033[1;33m'; GREEN='\033[0;32m'
+CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
 ok()   { echo -e "  ${GREEN}[OK]${NC}  $*"; }
 warn() { echo -e "  ${YELLOW}[WARN]${NC} $*"; }
 err()  { echo -e "  ${RED}[ERR]${NC}  $*"; exit 1; }
@@ -27,20 +28,20 @@ ok "TELEGRAM_BOT_TOKEN set"
 LLM="${LLM_BACKEND:-deepseek}"
 case "$LLM" in
     yandexgpt)
-        [[ -z "${YANDEX_API_KEY:-}" ]]    && err "YANDEX_API_KEY not set"
-        [[ -z "${YANDEX_FOLDER_ID:-}" ]]  && err "YANDEX_FOLDER_ID not set"
+        [[ -z "${YANDEX_API_KEY:-}" ]]       && err "YANDEX_API_KEY not set"
+        [[ -z "${YANDEX_FOLDER_ID:-}" ]]     && err "YANDEX_FOLDER_ID not set"
         ok "LLM: YandexGPT credentials OK" ;;
     deepseek)
-        [[ -z "${DEEPSEEK_API_KEY:-}" ]]  && err "DEEPSEEK_API_KEY not set"
+        [[ -z "${DEEPSEEK_API_KEY:-}" ]]     && err "DEEPSEEK_API_KEY not set"
         ok "LLM: DeepSeek API key OK" ;;
     gigachat)
         [[ -z "${GIGACHAT_CREDENTIALS:-}" ]] && err "GIGACHAT_CREDENTIALS not set"
         ok "LLM: GigaChat credentials OK" ;;
     openai|chatgpt)
-        [[ -z "${OPENAI_API_KEY:-}" ]]    && err "OPENAI_API_KEY not set"
+        [[ -z "${OPENAI_API_KEY:-}" ]]       && err "OPENAI_API_KEY not set"
         ok "LLM: OpenAI API key OK" ;;
     qwen)
-        [[ -z "${QWEN_API_KEY:-}" ]]      && err "QWEN_API_KEY not set"
+        [[ -z "${QWEN_API_KEY:-}" ]]         && err "QWEN_API_KEY not set"
         ok "LLM: Qwen API key OK" ;;
     ollama)
         ok "LLM: Ollama (no API key required)" ;;
@@ -50,7 +51,7 @@ esac
 # 5. E5 model
 E5_PATH="${FINETUNED_MODEL_PATH:-models/wikidata_finetuned_remote/wikidata_finetuned}"
 [[ -f "$E5_PATH/config.json" ]] \
-    || err "E5 model not found at: $E5_PATH\n  Download: source .venv/bin/activate && python -c \"from sentence_transformers import SentenceTransformer; SentenceTransformer('intfloat/multilingual-e5-small').save('$E5_PATH')\""
+    || err "E5 model not found at: $E5_PATH\n  Run: source .venv/bin/activate && python -c \"from sentence_transformers import SentenceTransformer; SentenceTransformer('intfloat/multilingual-e5-small').save('$E5_PATH')\""
 ok "E5 model: $E5_PATH"
 
 # 6. KuzuDB populated
@@ -75,7 +76,40 @@ else
     ok "TComplEx checkpoint: $TCOMPLEX_CKPT"
 fi
 
-echo -e "\n${GREEN}All checks passed. Starting bot (production mode)...${NC}\n"
+# 9. GPU / torch status
+echo ""
+TORCH_CUDA=$(".venv/bin/python" -c "import torch; print(torch.cuda.is_available())" 2>/dev/null || echo "False")
+TORCH_VER=$(".venv/bin/python"  -c "import torch; print(torch.__version__)"          2>/dev/null || echo "?")
+if [[ "$TORCH_CUDA" == "True" ]]; then
+    GPU_DEV=$(".venv/bin/python" -c "import torch; print(torch.cuda.get_device_name(0))" 2>/dev/null || echo "?")
+    ok "GPU: $GPU_DEV — torch $TORCH_VER (CUDA)"
+elif [[ "$(uname)" == "Darwin" && "$(uname -m)" == "arm64" ]]; then
+    ok "GPU: Apple Silicon — torch $TORCH_VER (MPS)"
+else
+    warn "GPU: not detected — torch $TORCH_VER (CPU only)"
+fi
+
+# 10. Key package imports
+for mod in kuzu chromadb aiogram natasha; do
+    ".venv/bin/python" -c "import $mod" 2>/dev/null \
+        && ok "package: $mod" \
+        || err "package '$mod' not importable — run: bash setup.sh"
+done
+
+# ── Status block ──────────────────────────────────────────────────────────────
+TCOMPLEX_STATUS="disabled"
+[[ -f "$TCOMPLEX_CKPT" ]] && TCOMPLEX_STATUS="loaded"
+
+echo ""
+echo -e "${BOLD}════════════════════════════════════════  STATUS  ═════${NC}"
+echo -e "  Mode    : ${GREEN}production (KuzuDB + ChromaDB)${NC}"
+echo -e "  LLM     : ${LLM}"
+echo -e "  torch   : ${TORCH_VER}  CUDA=$([ "$TORCH_CUDA" == "True" ] && echo yes || echo no)"
+echo -e "  KuzuDB  : ${KUZU_PATH}"
+echo -e "  TComplEx: ${TCOMPLEX_STATUS}"
+echo -e "${BOLD}════════════════════════════════════════════════════════${NC}"
+echo ""
+echo -e "${GREEN}Starting bot...${NC}"
 export USE_INMEMORY=false
 export GRAPH_BACKEND=kuzu
 exec ".venv/bin/python" bot.py

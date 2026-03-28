@@ -285,15 +285,23 @@ class SimpleInMemoryEngine:
             })
         return output
 
+    def ask_full(self, question: str, top_k: int = 10, debug: bool = False):
+        """Single-pass: returns (answer, ranked_results) to avoid double pipeline execution."""
+        ranked = self.get_ranked_results(question, top_k)
+        answer = self.ask(question, top_k, debug)
+        return answer, ranked
+
     def get_neighborhood(self, entity_name: str, limit: int = 20) -> List[str]:
         name_lower = entity_name.lower()
         return [t for t in self.quad_texts if name_lower in t.lower()][:limit]
 
     def status(self) -> Dict:
+        from src.pipelines.ingestion.doc_ingestion_service import get_ingest_stats
         unique_nodes = len(
             set(s for s, _, _, _ in self.raw_quads) |
             set(o for _, _, o, _ in self.raw_quads)
         )
+        stats_file = get_ingest_stats()
         return {
             "mode": "in-memory",
             "nodes": unique_nodes,
@@ -301,6 +309,7 @@ class SimpleInMemoryEngine:
             "embeddings_ready": self.embeddings is not None,
             "tcomplex_loaded": self.temporal_scorer is not None,
             "llm": type(self.llm).__name__ if self.llm else "None",
+            "facts_since_last_retrain": stats_file.get("facts_since_last_retrain", 0),
         }
 
 

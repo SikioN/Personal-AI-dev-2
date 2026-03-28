@@ -30,8 +30,13 @@ def main() -> None:
     parser.add_argument("--checkpoint-out", default=None,
                         help="Output checkpoint path (default: tcomplex_retrained.ckpt in tkbc-dir)")
     parser.add_argument("--epochs", type=int, default=50)
-    parser.add_argument("--batch-size", type=int, default=1000)
+    parser.add_argument("--batch-size", type=int, default=None,
+                        help="Batch size (default: auto-calculated from GPU memory)")
     parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--num-gpus", type=int, default=None,
+                        help="Number of GPUs to use (default: auto-detect)")
+    parser.add_argument("--no-amp", action="store_true",
+                        help="Disable BF16 AMP (use FP32)")
     args = parser.parse_args()
 
     if not os.path.isdir(args.tkbc_dir):
@@ -45,7 +50,9 @@ def main() -> None:
     )
 
     logger.info("Loading tkbc data from: %s", args.tkbc_dir)
-    logger.info("  epochs=%d  batch_size=%d  lr=%.1e", args.epochs, args.batch_size, args.lr)
+    logger.info("  epochs=%d  batch_size=%s  lr=%.1e  num_gpus=%s  amp=%s",
+                args.epochs, args.batch_size or "auto", args.lr,
+                args.num_gpus or "auto", not args.no_amp)
 
     try:
         from src.kg_model.temporal.temporal_model import TemporalScorer
@@ -86,6 +93,8 @@ def main() -> None:
                 epochs=args.epochs,
                 batch_size=args.batch_size,
                 lr=args.lr,
+                num_gpus=args.num_gpus,
+                use_amp=not args.no_amp,
             )
         else:
             logger.warning("TemporalScorer has no finetune() method — skipping.")

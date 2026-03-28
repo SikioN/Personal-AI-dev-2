@@ -24,15 +24,15 @@ def get_device(prefer_mps: bool = True, verbose: bool = True) -> str:
     if torch.cuda.is_available():
         device = 'cuda'
         if verbose:
-            print(f"✓ Используется CUDA GPU: {torch.cuda.get_device_name(0)}")
+            print(f"\033[92m✓ Используется CUDA GPU: {torch.cuda.get_device_name(0)}\033[0m")
     elif prefer_mps and hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
         device = 'mps'
         if verbose:
-            print("✓ Используется Apple Silicon GPU (MPS)")
+            print("\033[92m✓ Используется Apple Silicon GPU (MPS)\033[0m")
     else:
         device = 'cpu'
         if verbose:
-            print("✓ Используется CPU (GPU не найден)")
+            print("\033[91m⚠️ ВНИМАНИЕ: Используется CPU (GPU не найден или несовместим). Работа может быть медленной.\033[0m")
     
     return device
 

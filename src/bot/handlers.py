@@ -2,9 +2,11 @@
 import asyncio
 import logging
 import os
+import re
 import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
 from typing import Optional
 from aiogram import Router, F, Bot
@@ -215,8 +217,7 @@ async def handle_question_input(message: Message, state: FSMContext):
     async with _get_semaphore():
         try:
             engine, _, _ = await asyncio.to_thread(_get_engine_and_navigator)
-            results = await asyncio.to_thread(engine.get_ranked_results, query, s['top_k'])
-            answer = await asyncio.to_thread(engine.ask, query, s['top_k'])
+            answer, results = await asyncio.to_thread(engine.ask_full, query, s['top_k'])
         except Exception as e:
             logger.exception("Error in question input handler")
             await message.answer(f"Ошибка: {_esc(str(e))}", parse_mode="MarkdownV2")
@@ -255,12 +256,15 @@ async def cmd_status(message: Message):
     ingested = e_status.get("ingested_facts", 0)
     graph_backend = os.environ.get("GRAPH_BACKEND", "kuzu")
 
+    facts_since_retrain = e_status.get("facts_since_last_retrain", 0)
+
     if kg_model is None:
         # In-memory mode — Neo4j/ChromaDB deliberately not used
         nodes = e_status.get("nodes", 0)
         quads = e_status.get("quadruplets", len(getattr(engine, "raw_quads", [])))
         tcomplex_ok = e_status.get("tcomplex_loaded")
-        text = format_status(None, None, llm_backend, device, nodes, quads, ingested, "in-memory", tcomplex_ok, graph_backend)
+        text = format_status(None, None, llm_backend, device, nodes, quads, ingested, "in-memory",
+                             tcomplex_ok, graph_backend, facts_since_last_retrain=facts_since_retrain)
     else:
         neo4j_ok = False
         chroma_ok = False
@@ -279,7 +283,8 @@ async def cmd_status(message: Message):
         except Exception:
             pass
         tcomplex_ok = e_status.get("tcomplex_loaded")
-        text = format_status(neo4j_ok, chroma_ok, llm_backend, device, nodes, quads, ingested, "production", tcomplex_ok, graph_backend)
+        text = format_status(neo4j_ok, chroma_ok, llm_backend, device, nodes, quads, ingested, "production",
+                             tcomplex_ok, graph_backend, facts_since_last_retrain=facts_since_retrain)
 
     await message.answer(text, parse_mode="MarkdownV2")
 
@@ -346,14 +351,12 @@ async def cmd_ask(message: Message):
     async with _get_semaphore():
         try:
             engine, _, _ = await asyncio.to_thread(_get_engine_and_navigator)
-            results = await asyncio.to_thread(engine.get_ranked_results, query, s['top_k'])
-            answer = await asyncio.to_thread(engine.ask, query, s['top_k'])
+            answer, results = await asyncio.to_thread(engine.ask_full, query, s['top_k'])
         except Exception as e:
             logger.exception("Error in /ask")
             await message.answer(f"Ошибка: {_esc(str(e))}", parse_mode="MarkdownV2")
             return
 
-    # 5.1: check for None answer (LLM failure reported from GenerationStage)
     if answer is None:
         await message.answer("Произошла ошибка при обращении к LLM\\. Попробуйте позже\\.",
                              parse_mode="MarkdownV2")
@@ -499,7 +502,7 @@ async def cmd_ingest(message: Message):
         "Подготовка к извлечению (принудительная переработка)..." if force_reprocess
         else "Подготовка к извлечению..."
     )
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     def sync_progress(text: str):
         async def _do() -> None:
@@ -533,7 +536,7 @@ async def cmd_ingest(message: Message):
             logger.exception("Error in /ingest")
             await status_msg.edit_text(f"Ошибка: {_esc(str(e)[:200])}", parse_mode="MarkdownV2")
             return
-    use_inmemory = os.environ.get("USE_INMEMORY", "true").lower() in ("1", "true", "yes")
+    use_inmemory = os.environ.get("USE_INMEMORY", "false").lower() in ("1", "true", "yes")
     added = getattr(stats, "added", 0) if hasattr(stats, "added") else (stats or {}).get("added", 0)
     retrain_kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="Обновить модель", callback_data="menu_retrain_confirm")
@@ -547,7 +550,7 @@ async def cmd_ingest(message: Message):
 
 async def _do_retrain(message: Message) -> None:
     """Shared retrain logic used by /retrain command and inline button."""
-    use_inmemory = os.environ.get("USE_INMEMORY", "true").lower() in ("1", "true", "yes")
+    use_inmemory = os.environ.get("USE_INMEMORY", "false").lower() in ("1", "true", "yes")
     if use_inmemory:
         await message.answer(
             "TComplEx недоступен в режиме in\\-memory\\.", parse_mode="MarkdownV2"
@@ -577,6 +580,11 @@ async def _do_retrain(message: Message) -> None:
             engine, _, _ = await asyncio.to_thread(_get_engine_and_navigator)
             if hasattr(engine, "hot_reload_scorer"):
                 await asyncio.to_thread(engine.hot_reload_scorer, checkpoint_out)
+            try:
+                from src.pipelines.ingestion.doc_ingestion_service import reset_facts_since_retrain
+                reset_facts_since_retrain()
+            except Exception:
+                pass
         except Exception as e:
             logger.exception("Error in /retrain")
             await status_msg.edit_text(f"Ошибка переобучения: {_esc(str(e)[:200])}")
@@ -630,6 +638,12 @@ async def handle_menu(query: CallbackQuery):
                 engine, _, kg_model = await asyncio.to_thread(_get_engine_and_navigator)
                 if kg_model:
                     await asyncio.to_thread(kg_model.clear)
+                    try:
+                        from extract.extract_quadruplets import reset_registry
+                        reset_registry()
+                        logger.info("[/clear] CQ/CP ID registry reset.")
+                    except ImportError:
+                        pass
                     await query.message.edit_text("База знаний полностью очищена\\.", parse_mode="MarkdownV2")
                 else:
                     await query.message.edit_text("Очистка доступна только в production режиме\\.", parse_mode="MarkdownV2")
@@ -668,7 +682,15 @@ async def handle_document(message: Message, bot: Bot):
 
     save_dir = os.path.join(ROOT_DIR, "extract", "new_docs")
     os.makedirs(save_dir, exist_ok=True)
-    save_path = os.path.join(save_dir, doc.file_name)
+    safe_name = os.path.basename(doc.file_name or "upload")
+    safe_name = re.sub(r'[^\w.\-]', '_', safe_name)[:200]
+    if not safe_name or safe_name.lstrip('_').lstrip('.') == '':
+        safe_name = 'upload'
+    base, ext = os.path.splitext(safe_name)
+    candidate = safe_name
+    if os.path.exists(os.path.join(save_dir, candidate)):
+        candidate = f"{base}_{uuid.uuid4().hex[:8]}{ext}"
+    save_path = os.path.join(save_dir, candidate)
 
     fname_esc = _esc(doc.file_name)
     status_msg = await message.answer(
@@ -714,6 +736,7 @@ async def _process_document_bg(bot: Bot, doc, save_path: str, status_msg: Messag
 
         added = res["added"]
         sample_quads = res.get("quadruplets", [])
+        facts_since_retrain = res.get("facts_since_last_retrain", 0)
 
         if added == 0 and res["errors"] == 0:
             await status_msg.edit_text(
@@ -727,6 +750,11 @@ async def _process_document_bg(bot: Bot, doc, save_path: str, status_msg: Messag
             f"Добавлено фактов: `{added}`\n"
             f"Ошибок: `{res['errors']}`"
         )
+        if facts_since_retrain > 0:
+            summary += (
+                f"\n\nС момента последнего обновления TComplEx: `{facts_since_retrain}` фактов\\. "
+                f"Рекомендуется переобучить модель для точных ответов\\."
+            )
         if sample_quads:
             from src.bot.formatters import format_ingest_sample
             sample_text = format_ingest_sample(sample_quads, max_n=5)

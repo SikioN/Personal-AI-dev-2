@@ -42,7 +42,7 @@ def _append_stash(quadruplets: list[dict]) -> None:
         json.dump(stash, f, ensure_ascii=False)
 
 
-def _update_ingest_stats(added: int) -> None:
+def _update_ingest_stats(added: int, temporal: int = 0, atemporal: int = 0) -> None:
     """Increment running total of user-ingested facts."""
     os.makedirs(os.path.dirname(INGEST_STATS_PATH), exist_ok=True)
     try:
@@ -52,6 +52,12 @@ def _update_ingest_stats(added: int) -> None:
         else:
             stats = {"total_facts": 0}
         stats["total_facts"] = stats.get("total_facts", 0) + added
+        stats["temporal_facts"] = stats.get("temporal_facts", 0) + temporal
+        stats["atemporal_facts"] = stats.get("atemporal_facts", 0) + atemporal
+        # Track ALL new facts since last TComplEx retrain (not just temporal),
+        # because TComplEx embeddings become stale for any new entity added to KG.
+        stats["facts_since_last_retrain"] = stats.get("facts_since_last_retrain", 0) + added
+        stats["temporal_since_last_retrain"] = stats.get("temporal_since_last_retrain", 0) + temporal
         with open(INGEST_STATS_PATH, "w", encoding="utf-8") as f:
             json.dump(stats, f)
     except Exception as e:
@@ -67,6 +73,32 @@ def get_ingested_facts_count() -> int:
     except Exception:
         pass
     return 0
+
+
+def get_ingest_stats() -> dict:
+    """Return full ingest stats dict from file."""
+    try:
+        if os.path.exists(INGEST_STATS_PATH):
+            with open(INGEST_STATS_PATH, encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+
+def reset_facts_since_retrain() -> None:
+    """Reset facts_since_last_retrain counter after successful TComplEx retrain."""
+    try:
+        stats = {}
+        if os.path.exists(INGEST_STATS_PATH):
+            with open(INGEST_STATS_PATH, encoding="utf-8") as f:
+                stats = json.load(f)
+        stats["facts_since_last_retrain"] = 0
+        stats["temporal_since_last_retrain"] = 0
+        with open(INGEST_STATS_PATH, "w", encoding="utf-8") as f:
+            json.dump(stats, f)
+    except Exception as e:
+        logger.warning("Could not reset facts_since_last_retrain: %s", e)
 
 
 class DocIngestionService:
@@ -103,16 +135,14 @@ class DocIngestionService:
         try:
             from extract.extract_quadruplets import (
                 collect_documents,
-                fetch_all_wikidata_properties,
                 build_quadruplet,
+                normalize_names,
                 deduplicate,
                 _load_processed_manifest,
                 _is_processed,
                 _mark_processed,
                 _load_custom_registry,
-                _load_prop_llm_cache,
-                extract_with_ollama,
-                extract_with_openai,
+                _file_sha256,
             )
         except ImportError:
             raise RuntimeError(
@@ -127,11 +157,6 @@ class DocIngestionService:
         # Initialise caches
         _load_processed_manifest()
         _load_custom_registry()
-        _load_prop_llm_cache()
-
-        prop_map = fetch_all_wikidata_properties(use_cache=True)
-
-        llm_caller = self._make_llm_caller()
 
         documents = collect_documents(input_dir)
         if not reprocess:
@@ -148,6 +173,8 @@ class DocIngestionService:
         all_quads: list[dict] = []
         errors_total = 0
         files_processed = 0
+        quads_per_file: dict[str, int] = {}
+        successfully_processed_files: list[str] = []
 
         for fp, txt in new_docs:
             res = self.ingest_file(fp, txt, tkbc_dir=tkbc_dir, progress_callback=progress_callback)
@@ -156,11 +183,23 @@ class DocIngestionService:
             errors_total += res.get("errors", 0)
             if quads or not res.get("errors"):
                 files_processed += 1
-            # In batch mode mark after extraction (KG write is one batch for all files)
-            _mark_processed(fp, len(quads))
+            quads_per_file[fp] = len(quads)
+            successfully_processed_files.append(fp)
             logger.info("[DocIngestionService] File %s: Extracted %d facts", Path(fp).name, len(quads))
 
+        # 1.11: mark AFTER successful finalize, not before
         added = self._finalize_ingestion(all_quads, tkbc_dir, progress_callback)
+        for fp in successfully_processed_files:
+            sha = _file_sha256(fp)
+            _mark_processed(fp, quads_per_file[fp], sha)
+
+        # Read updated counter for display
+        try:
+            with open(INGEST_STATS_PATH, encoding="utf-8") as _sf:
+                _stats = json.load(_sf)
+            facts_since_retrain = _stats.get("facts_since_last_retrain", 0)
+        except Exception:
+            facts_since_retrain = added
 
         return {
             "added": added,
@@ -168,6 +207,7 @@ class DocIngestionService:
             "errors": errors_total,
             "files_processed": files_processed,
             "files_skipped": files_skipped,
+            "facts_since_last_retrain": facts_since_retrain,
         }
 
     def ingest_file(
@@ -183,14 +223,13 @@ class DocIngestionService:
         """
         try:
             from extract.extract_quadruplets import (
-                fetch_all_wikidata_properties,
                 build_quadruplet,
+                normalize_names,
                 deduplicate,
                 _load_processed_manifest,
                 _load_custom_registry,
-                _load_prop_llm_cache,
+                extract_with_deepseek,
                 extract_with_ollama,
-                extract_with_openai,
             )
         except ImportError:
             raise RuntimeError(
@@ -202,7 +241,6 @@ class DocIngestionService:
             # Ensure caches are ready (inside try so any IO error is caught)
             _load_processed_manifest()
             _load_custom_registry()
-            _load_prop_llm_cache()
 
             if text is None:
                 from extract.extract_quadruplets import read_document
@@ -215,13 +253,9 @@ class DocIngestionService:
                     return {"quadruplets": [], "added": 0, "errors": 1}
                 logger.info("[DocIngestionService] Read %s — %d chars", fname, len(text))
 
-            prop_map = fetch_all_wikidata_properties(use_cache=True)
-            llm_caller = self._make_llm_caller()
-
             llm_backend = os.environ.get("LLM_BACKEND", "deepseek").lower()
             llm_model = self._get_llm_model(llm_backend)
             llm_api_key = self._get_llm_api_key(llm_backend)
-            llm_base_url = self._get_llm_base_url(llm_backend)
 
             logger.info("[DocIngestionService] Using LLM backend=%s model=%s", llm_backend, llm_model)
             if progress_callback:
@@ -230,24 +264,30 @@ class DocIngestionService:
             api_chunk_errors = 0
             if llm_backend == "ollama":
                 raw_quads = extract_with_ollama(text, model=llm_model)
-            elif llm_backend in ("openai", "deepseek", "chatgpt", "qwen", "compatible"):
-                raw_quads, api_chunk_errors = extract_with_openai(
+            else:
+                # deepseek / openai / qwen / compatible — все через extract_with_deepseek
+                raw_quads, api_chunk_errors = extract_with_deepseek(
                     text,
                     api_key=llm_api_key,
                     model=llm_model,
-                    base_url=llm_base_url,
                     workers=4,
                 )
-            else:
-                raw_quads = extract_with_ollama(text, model=llm_model)
 
             logger.info("[DocIngestionService] LLM returned %d raw quads, %d chunk errors",
                         len(raw_quads), api_chunk_errors)
 
+            # Batch normalize names via Natasha (one call for the whole file)
+            all_names = (
+                [str(r.get("s", "")) for r in raw_quads] +
+                [str(r.get("o", "")) for r in raw_quads] +
+                [str(r.get("r", "")) for r in raw_quads]
+            )
+            norm_map = normalize_names(all_names) if raw_quads else {}
+
             built = []
             for raw in raw_quads:
                 try:
-                    q = build_quadruplet(raw, prop_map, llm_caller)
+                    q = build_quadruplet(raw, norm_map)
                     if q:
                         built.append(q)
                 except Exception as e:
@@ -284,9 +324,20 @@ class DocIngestionService:
         added = self._finalize_ingestion(quads, tkbc_dir, progress_callback)
         # Mark ONLY after facts are actually written to KG
         if added > 0:
-            from extract.extract_quadruplets import _mark_processed
-            _mark_processed(filepath, added)
-        return {"added": added, "errors": extraction_errors, "quadruplets": quads}
+            from extract.extract_quadruplets import _mark_processed, _file_sha256
+            sha = _file_sha256(filepath)
+            _mark_processed(filepath, added, sha)
+
+        # Read updated counter for display
+        try:
+            with open(INGEST_STATS_PATH, encoding="utf-8") as _sf:
+                _stats = json.load(_sf)
+            facts_since_retrain = _stats.get("facts_since_last_retrain", 0)
+        except Exception:
+            facts_since_retrain = added
+
+        return {"added": added, "errors": extraction_errors, "quadruplets": quads,
+                "facts_since_last_retrain": facts_since_retrain}
 
     def _finalize_ingestion(self, all_quadruplets: list[dict], tkbc_dir: Optional[str], progress_callback=None) -> int:
         if not all_quadruplets:
@@ -294,6 +345,15 @@ class DocIngestionService:
 
         if progress_callback:
             progress_callback(f"Сохранение {len(all_quadruplets)} фактов в граф...")
+
+        # Count temporal vs atemporal facts for stats tracking (1.14)
+        import re as _re
+        temporal_count = sum(
+            1 for q in all_quadruplets
+            if q.get("t", {}).get("prop", {}).get("start")
+            and bool(_re.findall(r'\d{4}', str(q.get("t", {}).get("prop", {}).get("start", ""))))
+        )
+        atemporal_count = len(all_quadruplets) - temporal_count
 
         if self._inmemory_engine is not None:
             logger.info("[DocIngestionService] Finalizing ingestion to IN-MEMORY stash.")
@@ -303,7 +363,7 @@ class DocIngestionService:
             result = self._ingest_to_production(all_quadruplets, tkbc_dir)
             added = result.added
 
-        _update_ingest_stats(added)
+        _update_ingest_stats(added, temporal=temporal_count, atemporal=atemporal_count)
         return added
 
     # ------------------------------------------------------------------

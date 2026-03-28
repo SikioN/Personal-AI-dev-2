@@ -2,7 +2,11 @@ import numpy as np
 import torch
 import os
 import re
+import time
+import logging
 from typing import List, Dict, Tuple, Optional
+
+logger = logging.getLogger(__name__)
 
 from src.kg_model.knowledge_graph_model import KnowledgeGraphModel
 from src.utils.data_structs import Quadruplet, QuadrupletCreator
@@ -257,6 +261,64 @@ class QAEngine:
         print(f'\n{SEP}\n>>> ANSWER: {answer}  ({total}s)\n[TIMING] {timing_str}\n{SEP}\n')
         return answer
 
+    def ask_full(self, question: str, top_k: int = 10, debug: bool = False) -> tuple:
+        """
+        Single-pass pipeline: returns (answer, ranked_results) to avoid double execution.
+        answer is None when LLM call failed.
+        ranked_results: facts used by LLM come first (_used_by_llm=True), rest fill up to top_k.
+        """
+        if not self.llm_client:
+            return "LLM client not available.", []
+
+        t0 = time.perf_counter()
+        extraction = self._extraction_stage.run(question)
+        t1 = time.perf_counter()
+
+        retrieval = self._retrieval_stage.run(question, extraction)
+        t2 = time.perf_counter()
+        if not retrieval.unique_candidates:
+            logger.debug("[ask_full] extraction=%.3fs retrieval=%.3fs → no candidates", t1 - t0, t2 - t1)
+            return 'Unknown', []
+
+        scoring = self._scoring_stage.run(question, retrieval, extraction)
+        t3 = time.perf_counter()
+
+        generation = self._generation_stage.run(
+            question, scoring.selected_quads, extraction, retrieval
+        )
+        t4 = time.perf_counter()
+
+        logger.info(
+            "[ask_full] extraction=%.3fs retrieval=%.3fs scoring=%.3fs generation=%.3fs total=%.3fs",
+            t1 - t0, t2 - t1, t3 - t2, t4 - t3, t4 - t0,
+        )
+
+        # Build ranked_results: selected (seen by LLM) first, then rest up to top_k
+        selected_ids = {q.id for q in scoring.selected_quads}
+        ranked = []
+        for r in scoring.all_scored:
+            if r.quad.id in selected_ids:
+                ranked.append({
+                    'quadruplet': r.quad,
+                    'text': QuadrupletCreator.stringify(r.quad)[1],
+                    'confidence': r.conf,
+                    'temporal_score': f"{r.tp:.2f} (Logit: {r.tl:.2f})" if r.tl != float('-inf') else "None",
+                    'semantic_score': f"{r.e5:.2f}",
+                    '_used_by_llm': True,
+                })
+        for r in scoring.all_scored:
+            if r.quad.id not in selected_ids and len(ranked) < top_k:
+                ranked.append({
+                    'quadruplet': r.quad,
+                    'text': QuadrupletCreator.stringify(r.quad)[1],
+                    'confidence': r.conf,
+                    'temporal_score': f"{r.tp:.2f} (Logit: {r.tl:.2f})" if r.tl != float('-inf') else "None",
+                    'semantic_score': f"{r.e5:.2f}",
+                    '_used_by_llm': False,
+                })
+
+        return generation.answer, ranked
+
     def hot_reload_scorer(self, checkpoint_path: str) -> None:
         """Atomically replace TComplEx scorer without stopping inference (GIL-safe)."""
         from src.kg_model.temporal.temporal_model import TemporalScorer
@@ -276,7 +338,7 @@ class QAEngine:
 
     # 1.4: status() required by /status handler when in production mode
     def status(self) -> dict:
-        from src.pipelines.ingestion.doc_ingestion_service import get_ingested_facts_count
+        from src.pipelines.ingestion.doc_ingestion_service import get_ingest_stats
         llm_name = type(self.llm_client).__name__ if self.llm_client else "None"
         nodes, quads = 0, 0
         try:
@@ -286,12 +348,14 @@ class QAEngine:
             quads = graph_info.get('quadruplets', 0)
         except Exception:
             pass
+        stats_file = get_ingest_stats()
         return {
             "mode": "production",
             "llm": llm_name,
-            "ingested_facts": get_ingested_facts_count(),
+            "ingested_facts": stats_file.get("total_facts", 0),
             "nodes": nodes,
             "quadruplets": quads,
             "tcomplex_loaded": self.temporal_scorer is not None,
+            "facts_since_last_retrain": stats_file.get("facts_since_last_retrain", 0),
         }
 

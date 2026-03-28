@@ -1,5 +1,5 @@
 #!/bin/bash
-# setup.sh — Bootstrap for Personal-AI KG Navigator
+# setup.sh — Bootstrap for KG Navigator bot
 # Usage: bash setup.sh [--build-kg]
 set -e
 
@@ -20,7 +20,21 @@ warn() { echo -e "  ${YELLOW}[WARN]${NC} $*"; }
 err()  { echo -e "  ${RED}[ERR]${NC}  $*"; }
 info() { echo -e "  ${CYAN}[--]${NC}  $*"; }
 
-echo -e "\n${BOLD}====  Personal-AI setup.sh  ====${NC}\n"
+echo -e "\n${BOLD}====  setup.sh  ====${NC}\n"
+
+# ── GPU / CUDA detection ───────────────────────────────────────────────────────
+GPU_NAME=""
+CUDA_MAJOR=""
+TORCH_INDEX_URL=""
+if command -v nvidia-smi &>/dev/null && nvidia-smi &>/dev/null 2>&1; then
+    GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 || echo "Unknown GPU")
+    CUDA_MAJOR=$(nvidia-smi 2>/dev/null | grep -oP 'CUDA Version: \K[0-9]+' | head -1 || echo "")
+    if   [[ "${CUDA_MAJOR:-0}" -ge 12 ]]; then TORCH_INDEX_URL="https://download.pytorch.org/whl/cu121"
+    elif [[ "${CUDA_MAJOR:-0}" -ge 11 ]]; then TORCH_INDEX_URL="https://download.pytorch.org/whl/cu118"
+    fi
+elif [[ "$(uname)" == "Darwin" && "$(uname -m)" == "arm64" ]]; then
+    GPU_NAME="Apple Silicon (MPS)"
+fi
 
 # ── 1. Python 3.10+ ───────────────────────────────────────────────────────────
 echo -e "${BOLD}[1] Python interpreter${NC}"
@@ -54,10 +68,72 @@ VENV_PIP=".venv/bin/pip"
 
 # ── 3. Dependencies ───────────────────────────────────────────────────────────
 echo -e "\n${BOLD}[3] Installing dependencies${NC}"
-info "pip install -r requirements.txt ..."
 "$VENV_PIP" install --upgrade pip -q
+
+# 3a. PyTorch — install GPU build first so requirements.txt doesn't downgrade it
+if [[ -n "$TORCH_INDEX_URL" ]]; then
+    info "GPU detected: $GPU_NAME (CUDA $CUDA_MAJOR) — installing torch+cu${CUDA_MAJOR} ..."
+    "$VENV_PIP" install "torch>=2.0.0" --index-url "$TORCH_INDEX_URL" -q
+    ok "torch installed (CUDA $CUDA_MAJOR)"
+elif [[ "$GPU_NAME" == "Apple Silicon (MPS)" ]]; then
+    info "Apple Silicon detected — installing torch with MPS support ..."
+    "$VENV_PIP" install "torch>=2.0.0" -q
+    ok "torch installed (MPS)"
+else
+    info "No GPU detected — installing CPU-only torch ..."
+    "$VENV_PIP" install "torch>=2.0.0" -q
+    ok "torch installed (CPU)"
+fi
+
+# 3b. Remaining dependencies (torch already satisfied, pip won't downgrade it)
+info "pip install -r requirements.txt ..."
 "$VENV_PIP" install -r requirements.txt -q
-ok "Dependencies installed"
+ok "All dependencies installed"
+
+# 3c. Verify critical imports
+echo ""
+info "Verifying critical packages..."
+IMPORT_ERRORS=()
+for pkg_check in \
+    "torch" \
+    "sentence_transformers" \
+    "kuzu" \
+    "chromadb" \
+    "aiogram" \
+    "natasha" \
+    "pymupdf:fitz" \
+    "neo4j" \
+    "huggingface_hub"; do
+    mod="${pkg_check##*:}"    # module name (part after colon, or whole string)
+    label="${pkg_check%%:*}"  # display name (part before colon, or whole string)
+    if "$VENV_PYTHON" -c "import ${mod}" 2>/dev/null; then
+        ok "import $label"
+    else
+        err "import $label FAILED"
+        IMPORT_ERRORS+=("$label")
+    fi
+done
+
+# torch accelerator status
+TORCH_CUDA=$("$VENV_PYTHON" -c "import torch; print(torch.cuda.is_available())" 2>/dev/null || echo "False")
+TORCH_VER=$("$VENV_PYTHON"  -c "import torch; print(torch.__version__)"          2>/dev/null || echo "?")
+if [[ "$TORCH_CUDA" == "True" ]]; then
+    CUDA_DEV=$("$VENV_PYTHON" -c "import torch; print(torch.cuda.get_device_name(0))" 2>/dev/null || echo "?")
+    ok "torch $TORCH_VER — CUDA available ($CUDA_DEV)"
+elif [[ "$GPU_NAME" == "Apple Silicon (MPS)" ]]; then
+    MPS_OK=$("$VENV_PYTHON" -c "import torch; print(torch.backends.mps.is_available())" 2>/dev/null || echo "False")
+    [[ "$MPS_OK" == "True" ]] \
+        && ok "torch $TORCH_VER — MPS available" \
+        || warn "torch $TORCH_VER — MPS not available"
+else
+    warn "torch $TORCH_VER — CUDA not available (CPU only)"
+fi
+
+if [[ ${#IMPORT_ERRORS[@]} -gt 0 ]]; then
+    err "Failed imports: ${IMPORT_ERRORS[*]}"
+    err "Try: .venv/bin/pip install -r requirements.txt --force-reinstall"
+    exit 1
+fi
 
 # ── 4. Directories ────────────────────────────────────────────────────────────
 echo -e "\n${BOLD}[4] Creating required directories${NC}"
@@ -93,6 +169,7 @@ set +a
 echo -e "\n${BOLD}[6] KG data (full.txt)${NC}"
 KG_DATA_PATH="${KG_DATA_PATH:-wikidata_big/kg}"
 FULL_TXT="$KG_DATA_PATH/full.txt"
+LINE_COUNT=0
 if [[ -f "$FULL_TXT" ]]; then
     LINE_COUNT=$(wc -l < "$FULL_TXT" | tr -d ' ')
     ok "full.txt found — $LINE_COUNT lines ($FULL_TXT)"
@@ -110,10 +187,7 @@ else
     warn "E5 model not found at: $E5_PATH"
     info "Download with:"
     echo "    source .venv/bin/activate"
-    echo "    python -c \""
-    echo "    from sentence_transformers import SentenceTransformer"
-    echo "    SentenceTransformer('intfloat/multilingual-e5-small').save('$E5_PATH')"
-    echo "    \""
+    echo "    python -c \"from sentence_transformers import SentenceTransformer; SentenceTransformer('intfloat/multilingual-e5-small').save('$E5_PATH')\""
 fi
 
 # ── 8. TComplEx check ─────────────────────────────────────────────────────────
@@ -134,7 +208,7 @@ fi
 if $TCOMPLEX_OK; then
     ok "TComplEx data and checkpoint ready"
 else
-    info "Without TComplEx, the pipeline runs 6 stages (no temporal scoring)"
+    info "Without TComplEx, temporal scoring is disabled (pipeline still works)"
 fi
 
 # ── 9. --build-kg ─────────────────────────────────────────────────────────────
@@ -144,49 +218,64 @@ if $BUILD_KG; then
         err "Cannot build KG: full.txt not found at $FULL_TXT"
         exit 1
     fi
+    AVAIL_KB=$(df -k "$SCRIPT_DIR" 2>/dev/null | awk 'NR==2{print $4}' || echo 9999999)
+    if [[ "$AVAIL_KB" -lt 2097152 ]]; then
+        warn "Low disk space: $(( AVAIL_KB / 1024 )) MB available. Building KG may require ≥2 GB."
+    fi
     info "Running scripts/build_kg.py ..."
     "$VENV_PYTHON" scripts/build_kg.py
     ok "KuzuDB + ChromaDB built"
 fi
 
-# ── 10. Summary ───────────────────────────────────────────────────────────────
+# ── 10. Status summary ────────────────────────────────────────────────────────
 echo ""
 echo -e "${BOLD}════════════════════════════════════════════════════════${NC}"
-echo -e "${BOLD}  Setup complete. Next steps:${NC}"
+echo -e "${BOLD}  Setup status${NC}"
 echo -e "${BOLD}════════════════════════════════════════════════════════${NC}"
 echo ""
-echo -e "${CYAN}1. Fill in .env (required fields):${NC}"
+
+# Hardware block
+echo -e "${BOLD}Hardware:${NC}"
+if [[ -n "$GPU_NAME" && "$GPU_NAME" != "Apple Silicon (MPS)" ]]; then
+    echo -e "  GPU   : $GPU_NAME  (CUDA $CUDA_MAJOR)"
+    [[ "$TORCH_CUDA" == "True" ]] \
+        && echo -e "  torch : ${GREEN}CUDA enabled${NC}  ($TORCH_VER)" \
+        || echo -e "  torch : ${YELLOW}CUDA not active in torch${NC}  ($TORCH_VER)"
+elif [[ "$GPU_NAME" == "Apple Silicon (MPS)" ]]; then
+    echo -e "  GPU   : Apple Silicon (MPS)"
+    echo -e "  torch : $TORCH_VER (MPS)"
+else
+    echo -e "  GPU   : ${YELLOW}none detected — CPU mode${NC}"
+    echo -e "  torch : $TORCH_VER (CPU)"
+fi
+TOTAL_RAM_MB=$(( $(awk '/^MemTotal:/{print $2}' /proc/meminfo 2>/dev/null || \
+                  sysctl -n hw.memsize 2>/dev/null | awk '{print int($1/1024)}' || \
+                  echo 0) / 1024 ))
+[[ "$TOTAL_RAM_MB" -gt 0 ]] && echo -e "  RAM   : ${TOTAL_RAM_MB} MB total"
 echo ""
-echo "   TELEGRAM_BOT_TOKEN=<your token>"
+
+# Data block
+echo -e "${BOLD}Data:${NC}"
+[[ -f "$FULL_TXT" ]] \
+    && echo -e "  full.txt  : ${GREEN}OK${NC}  ($LINE_COUNT lines)" \
+    || echo -e "  full.txt  : ${YELLOW}missing${NC}"
+[[ -f "$E5_PATH/config.json" ]] \
+    && echo -e "  E5 model  : ${GREEN}OK${NC}" \
+    || echo -e "  E5 model  : ${YELLOW}missing${NC}"
+$TCOMPLEX_OK \
+    && echo -e "  TComplEx  : ${GREEN}OK${NC}" \
+    || echo -e "  TComplEx  : ${YELLOW}optional — not found${NC}"
+KUZU_DIR="${KUZU_PATH:-data/kuzu_db}"
+[[ -d "$KUZU_DIR" && -n "$(ls -A "$KUZU_DIR" 2>/dev/null)" ]] \
+    && echo -e "  KuzuDB    : ${GREEN}built${NC}" \
+    || echo -e "  KuzuDB    : ${YELLOW}not built — run: bash setup.sh --build-kg${NC}"
 echo ""
-echo "   LLM_BACKEND=<backend>   # choose one:"
-echo ""
-echo "   # DeepSeek (recommended):"
-echo "   DEEPSEEK_API_KEY=sk-..."
-echo ""
-echo "   # YandexGPT:"
-echo "   YANDEX_API_KEY=...   YANDEX_FOLDER_ID=...   YANDEX_MODEL=yandexgpt"
-echo ""
-echo "   # GigaChat:"
-echo "   GIGACHAT_CREDENTIALS=..."
-echo ""
-echo "   # OpenAI:"
-echo "   OPENAI_API_KEY=sk-..."
-echo ""
-echo "   # Qwen:"
-echo "   QWEN_API_KEY=...   QWEN_MODEL=qwen-plus"
-echo ""
-echo "   # Ollama (local):"
-echo "   OLLAMA_URL=http://localhost:11434   OLLAMA_MODEL=llama3.2"
-echo ""
-echo -e "${CYAN}2. Start the bot:${NC}"
-echo ""
-echo "   # Quick start (no DB, data loaded from full.txt into RAM):"
-echo "   bash run_inmemory.sh"
-echo ""
-echo "   # Production (KuzuDB + ChromaDB, requires --build-kg first):"
-echo "   bash setup.sh --build-kg    # one-time build"
-echo "   bash run_db.sh"
+
+# Next steps
+echo -e "${BOLD}Next steps:${NC}"
+echo -e "  1. Fill in ${BOLD}.env${NC}  (TELEGRAM_BOT_TOKEN + LLM credentials)"
+echo -e "  2a. Quick test : ${CYAN}bash run_inmemory.sh${NC}"
+echo -e "  2b. Production : ${CYAN}bash setup.sh --build-kg${NC}  then  ${CYAN}bash run_db.sh${NC}"
 echo ""
 echo -e "${BOLD}════════════════════════════════════════════════════════${NC}"
 echo ""
