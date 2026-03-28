@@ -139,6 +139,33 @@ notebooks/debug_ask.py
 # --- Tests ---
 tests/volumes
 
+# --- Dead test directories (reference gitignored src/ modules) ---
+tests/unit/parsers/
+tests/unit/pipelines/
+tests/integrational/memorize_pipeline/
+tests/integrational/qa_pipeline/
+tests/integrational/utils/
+tests/integrational/db_drivers/kv_driver/
+tests/integrational/db_drivers/tree_driver/
+tests/integrational/kg_model/nodestree_model/
+tests/performance/
+tests/functional/
+tests/docker-compose.yaml
+tests/run_tests.sh
+
+# --- Dead web assets (for removed app.py web UI) ---
+lib/
+static/
+inference/
+
+# --- Test ingestion documents and scratch output ---
+new_docs/
+out.json
+
+# --- Documentation binary assets ---
+docs/**/*.png
+docs/source/class_diagram/
+
 # --- Legacy / dead-code (not deleted, not tracked) ---
 src/agents/
 src/pipelines/memorize/
@@ -150,6 +177,10 @@ src/pipelines/qa/QAPipeline.py
 src/pipelines/qa/answers_aggregation/
 src/pipelines/qa/kg_reasoning/
 src/pipelines/qa/query_preprocessing/
+src/pipelines/qa/benchmark.py
+src/pipelines/qa/configs.py
 src/utils/cache_kv.py
+src/utils/graph_loader.py
+src/db_drivers/utils.py
 extract_data/*
 !extract_data/wikidata_properties_cache.json
