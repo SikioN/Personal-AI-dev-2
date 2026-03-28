@@ -133,7 +133,7 @@ def list_documents(input_dir: str) -> list[str]:
 # 2. ПУТИ И ФАЙЛЫ ДАННЫХ
 # ─────────────────────────────────────────────
 
-OUTPUT_DIR              = Path("extract_data")
+OUTPUT_DIR              = Path(os.environ.get("EXTRACT_DATA_DIR", "extract_data"))
 CUSTOM_ID_REGISTRY_FILE = str(OUTPUT_DIR / "custom_ids_registry.json")
 PROCESSED_MANIFEST_FILE = str(OUTPUT_DIR / "processed_files.json")
 

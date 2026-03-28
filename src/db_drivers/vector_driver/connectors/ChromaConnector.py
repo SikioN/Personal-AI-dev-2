@@ -1,3 +1,4 @@
+import os
 from typing import List, Tuple
 
 # Try to use pysqlite3 if available (required for older ChromaDB versions)
@@ -22,7 +23,7 @@ logging.getLogger("chromadb").setLevel(logging.CRITICAL)
 
 DEFAULT_CHROMA_CONFIG = VectorDBConnectionConfig(
     params={"hnsw:space": "ip", "hnsw:M": 32, "hnsw:construction_ef": 200, "hnsw:search_ef": 100},
-    conn={'path':'../data/graph_structures/default_vectorstore'})
+    conn={'path': os.environ.get('CHROMA_NODES_PATH', 'data/graph_structures/vectorized_nodes/default')})
 
 class ChromaConnection(AbstractVectorDatabaseConnection):
 

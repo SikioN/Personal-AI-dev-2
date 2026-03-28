@@ -44,25 +44,31 @@ def _compute_optimal_batch_size(
     return bs
 
 class TemporalScorer:
-    def __init__(self, 
-                 checkpoint_path: str = "models/cronkgqa/tcomplex.ckpt",
-                 data_path: str = "wikidata_big/kg/tkbc_processed_data/wikidata_big/",
-                 rank: int = 256, # Rank 256 (matches checkpoint 512 dim)
+    def __init__(self,
+                 checkpoint_path: str = None,
+                 data_path: str = None,
+                 rank: int = 256,  # Rank 256 (matches checkpoint 512 dim)
                  device: str = "cpu"):
-        
+
         self.device = device
-        
-        # Resolving absolute paths relative to project root
-        # This file is in src/kg_model/temporal/ -> 3 levels up to root (src/kg_model/temporal -> src/kg_model -> src -> root)
+
+        # Resolve project root: src/kg_model/temporal/ → 3 levels up
         current_dir = os.path.dirname(os.path.abspath(__file__))
         project_root = os.path.abspath(os.path.join(current_dir, "../../.."))
-        
-        # If paths are relative, make them absolute
+
+        # Fall back to env vars, then hardcoded defaults
+        if checkpoint_path is None:
+            checkpoint_path = os.environ.get(
+                "TCOMPLEX_CHECKPOINT", "models/cronkgqa/tcomplex.ckpt")
+        if data_path is None:
+            data_path = os.environ.get(
+                "TCOMPLEX_DATA_PATH", "wikidata_big/kg/tkbc_processed_data/wikidata_big/")
+
+        # Make relative paths absolute against project root
         if not os.path.isabs(data_path):
-             data_path = os.path.join(project_root, data_path)
-             
+            data_path = os.path.join(project_root, data_path)
         if not os.path.isabs(checkpoint_path):
-             checkpoint_path = os.path.join(project_root, checkpoint_path)
+            checkpoint_path = os.path.join(project_root, checkpoint_path)
 
         self.data_path = data_path
         

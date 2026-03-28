@@ -49,16 +49,21 @@ class QAConfig:
     neo4j_db: str = 'neo4j'
 
     # ChromaDB (external vector store)
-    chroma_nodes_path: str = 'data/graph_structures/vectorized_nodes/default'
-    chroma_quads_path: str = 'data/graph_structures/vectorized_quadruplets/default'
+    chroma_nodes_path: str = field(default_factory=lambda: os.environ.get(
+        "CHROMA_NODES_PATH", "data/graph_structures/vectorized_nodes/default"))
+    chroma_quads_path: str = field(default_factory=lambda: os.environ.get(
+        "CHROMA_QUADS_PATH", "data/graph_structures/vectorized_quadruplets/default"))
 
     # KuzuDB (embedded graph store)
     kuzu_path: str = field(default_factory=lambda: os.environ.get("KUZU_PATH", "data/kuzu_db"))
 
     # Model paths
-    finetuned_model_path: str = 'models/wikidata_finetuned_remote/wikidata_finetuned'
-    tcomplex_checkpoint: str = 'models/cronkgqa/tcomplex.ckpt'
-    tcomplex_data_path: str = 'wikidata_big/kg/tkbc_processed_data/wikidata_big/'
+    finetuned_model_path: str = field(default_factory=lambda: os.environ.get(
+        "FINETUNED_MODEL_PATH", "models/wikidata_finetuned_remote/wikidata_finetuned"))
+    tcomplex_checkpoint: str = field(default_factory=lambda: os.environ.get(
+        "TCOMPLEX_CHECKPOINT", "models/cronkgqa/tcomplex.ckpt"))
+    tcomplex_data_path: str = field(default_factory=lambda: os.environ.get(
+        "TCOMPLEX_DATA_PATH", "wikidata_big/kg/tkbc_processed_data/wikidata_big/"))
 
     # LLM generation system prompt
     anon_system_prompt: str = _ANON_SYS_DEFAULT

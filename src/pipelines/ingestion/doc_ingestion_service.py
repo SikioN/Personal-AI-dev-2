@@ -17,8 +17,14 @@ logger = logging.getLogger(__name__)
 
 # Path for persisting facts across in-memory restarts
 _ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-STASH_PATH = os.path.join(_ROOT_DIR, "data", "inmemory_stash.json")
-INGEST_STATS_PATH = os.path.join(_ROOT_DIR, "data", "ingest_stats.json")
+STASH_PATH = (
+    os.environ.get("INMEMORY_STASH_PATH")
+    or os.path.join(_ROOT_DIR, "data", "inmemory_stash.json")
+)
+INGEST_STATS_PATH = (
+    os.environ.get("INGEST_STATS_PATH")
+    or os.path.join(_ROOT_DIR, "data", "ingest_stats.json")
+)
 
 
 def _load_stash() -> list[dict]:

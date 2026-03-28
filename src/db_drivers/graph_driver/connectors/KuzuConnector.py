@@ -14,7 +14,7 @@ from ..utils import GraphDBConnectionConfig, AbstractGraphDatabaseConnection
 from ....utils import Quadruplet, NodeType
 
 DEFAULT_KUZU_CONFIG = GraphDBConnectionConfig(
-    params={'path': '../../kuzu_volume', 'buffer_pool_size': 1024 * 1024 * 512,
+    params={'path': os.environ.get('KUZU_PATH', 'data/kuzu_db'), 'buffer_pool_size': 1024 * 1024 * 512,
             'schema': [
                 "CREATE NODE TABLE IF NOT EXISTS object (str_id STRING, name STRING, prop MAP(STRING, STRING), PRIMARY KEY(str_id));",
                 "CREATE NODE TABLE IF NOT EXISTS hyper (str_id STRING, name STRING, prop MAP(STRING, STRING), PRIMARY KEY(str_id));",
