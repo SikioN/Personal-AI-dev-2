@@ -6,6 +6,24 @@ cd /app
 echo "[entrypoint] Starting. KG_DATA_PATH=${KG_DATA_PATH} KUZU_PATH=${KUZU_PATH}"
 ls /app/data 2>/dev/null || echo "[entrypoint] /app/data is empty or missing"
 
+# GPU / torch info
+echo "[entrypoint] === Hardware ==="
+python -c "
+import torch, os
+print(f'[entrypoint] torch version : {torch.__version__}')
+print(f'[entrypoint] CUDA available: {torch.cuda.is_available()}')
+if torch.cuda.is_available():
+    print(f'[entrypoint] GPU           : {torch.cuda.get_device_name(0)}')
+    print(f'[entrypoint] VRAM          : {torch.cuda.get_device_properties(0).total_memory // 1024**3} GB')
+" 2>/dev/null || echo "[entrypoint] torch not importable yet"
+
+# Disk space check before downloads
+AVAIL_KB=$(df -k /app/data 2>/dev/null | awk 'NR==2{print $4}' || df -k /app | awk 'NR==2{print $4}' || echo 9999999)
+echo "[entrypoint] Available disk : $(( AVAIL_KB / 1024 )) MB"
+if [[ "$AVAIL_KB" -lt 5242880 ]]; then
+    echo "[entrypoint] WARNING: Low disk space ($(( AVAIL_KB / 1024 )) MB). Downloads may fail."
+fi
+
 KG_DIR="${KG_DATA_PATH:-/app/data/wikidata_big/kg}"
 MODEL_DIR="${FINETUNED_MODEL_PATH:-/app/data/models/wikidata_finetuned_remote/wikidata_finetuned}"
 TCOMPLEX_CKPT="${TCOMPLEX_CHECKPOINT:-/app/data/models/cronkgqa/tcomplex.ckpt}"
@@ -81,15 +99,11 @@ print('[entrypoint] ChromaDB ready.')
 fi
 
 # 4. Build KuzuDB + ChromaDB (always run — build_kg.py is idempotent, skips if already populated)
-# NOTE: KuzuDB expects a FILE path, not a directory — do NOT mkdir the kuzu path itself
-mkdir -p "$(dirname "$KUZU_DIR")"
-# KuzuDB needs a FILE path. Remove stale directory if present (from previous broken runs)
-if [[ -d "$KUZU_DIR" ]]; then
-    echo "[entrypoint] Removing stale kuzu_db directory (KuzuDB requires a file path)..."
-    rm -rf "$KUZU_DIR"
-fi
-# Remove WAL file — Railway kills containers uncleanly, leaving a WAL that causes kuzu segfault
-rm -f "${KUZU_DIR}.wal" 2>/dev/null || true
+# KuzuDB stores its data in a directory.
+mkdir -p "$KUZU_DIR"
+
+# Optional: Remove WAL file if it exists, to prevent issues on crash recovery
+rm -f "${KUZU_DIR}/wal" 2>/dev/null || true
 
 # Validate existing KuzuDB — detect Python-level corruption (not segfaults)
 if [[ -e "$KUZU_DIR" ]]; then
@@ -108,7 +122,7 @@ except Exception as e:
     set -e
     if [[ $KUZU_EXIT -ne 0 ]]; then
         echo "[entrypoint] KuzuDB validation failed (exit $KUZU_EXIT), removing for rebuild..."
-        rm -f "${KUZU_DIR}" "${KUZU_DIR}.wal" 2>/dev/null || true
+        rm -rf "${KUZU_DIR}" "${KUZU_DIR}.wal" 2>/dev/null || true
     fi
 fi
 
@@ -121,5 +135,19 @@ echo "[entrypoint] Running build_kg.py (idempotent — skips if already populate
 python scripts/build_kg.py $BUILD_KG_ARGS
 echo "[entrypoint] Build complete (or skipped — already populated)."
 
-echo "[entrypoint] All checks passed. Starting bot..."
+echo "[entrypoint] === Final status ==="
+python -c "
+import torch, kuzu, chromadb, os
+print(f'[entrypoint] torch  : {torch.__version__}  CUDA={torch.cuda.is_available()}')
+print(f'[entrypoint] kuzu   : {kuzu.__version__}')
+print(f'[entrypoint] chroma : {chromadb.__version__}')
+kg = os.environ.get('KG_DATA_PATH', '/app/data/wikidata_big/kg')
+full = os.path.join(kg, 'full.txt')
+print(f'[entrypoint] KG data: {full}  exists={os.path.exists(full)}')
+kuzu_dir = os.environ.get('KUZU_PATH', '/app/data/kuzu_db')
+print(f'[entrypoint] KuzuDB : {kuzu_dir}  exists={os.path.isdir(kuzu_dir)}')
+ckpt = os.environ.get('TCOMPLEX_CHECKPOINT', '/app/data/models/cronkgqa/tcomplex.ckpt')
+print(f'[entrypoint] TComplEx ckpt: {os.path.exists(ckpt)}')
+" 2>/dev/null || echo "[entrypoint] status check skipped"
+echo "[entrypoint] Starting bot..."
 exec python bot.py
