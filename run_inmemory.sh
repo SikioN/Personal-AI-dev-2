@@ -14,6 +14,20 @@ echo -e "\n${BOLD}====  run_inmemory.sh pre-launch checks  ====${NC}\n"
 # 1. .venv
 [[ -f ".venv/bin/python" ]] || err ".venv not found. Run: bash setup.sh"
 
+# ── Device banner ──────────────────────────────────────────────────────────────
+TORCH_CUDA=$(".venv/bin/python" -c "import torch; print(torch.cuda.is_available())" 2>/dev/null || echo "False")
+TORCH_VER=$(".venv/bin/python"  -c "import torch; print(torch.__version__)"         2>/dev/null || echo "?")
+if [[ "$TORCH_CUDA" == "True" ]]; then
+    GPU_DEV=$(".venv/bin/python" -c "import torch; print(torch.cuda.get_device_name(0))" 2>/dev/null || echo "?")
+    VRAM=$(".venv/bin/python" -c "import torch; print(torch.cuda.get_device_properties(0).total_memory // 1024**3)" 2>/dev/null || echo "?")
+    echo -e "  ${GREEN}${BOLD}[GPU]${NC}  ${GPU_DEV}  ${VRAM} GB VRAM  torch ${TORCH_VER}"
+elif [[ "$(uname)" == "Darwin" && "$(uname -m)" == "arm64" ]]; then
+    echo -e "  ${GREEN}${BOLD}[GPU]${NC}  Apple Silicon (MPS)  torch ${TORCH_VER}"
+else
+    echo -e "  ${RED}${BOLD}[CPU]${NC}  No GPU detected — torch ${TORCH_VER}  (embeddings will be slow)"
+fi
+echo ""
+
 # 2. .env
 [[ -f ".env" ]] || err ".env not found. Run: bash setup.sh"
 set -a; source .env 2>/dev/null; set +a
@@ -82,20 +96,7 @@ else
     ok "TComplEx checkpoint: $TCOMPLEX_CKPT"
 fi
 
-# 8. GPU / torch status
-echo ""
-TORCH_CUDA=$(".venv/bin/python" -c "import torch; print(torch.cuda.is_available())" 2>/dev/null || echo "False")
-TORCH_VER=$(".venv/bin/python"  -c "import torch; print(torch.__version__)"          2>/dev/null || echo "?")
-if [[ "$TORCH_CUDA" == "True" ]]; then
-    GPU_DEV=$(".venv/bin/python" -c "import torch; print(torch.cuda.get_device_name(0))" 2>/dev/null || echo "?")
-    ok "GPU: $GPU_DEV — torch $TORCH_VER (CUDA)"
-elif [[ "$(uname)" == "Darwin" && "$(uname -m)" == "arm64" ]]; then
-    ok "GPU: Apple Silicon — torch $TORCH_VER (MPS)"
-else
-    warn "GPU: not detected — torch $TORCH_VER (CPU only)"
-fi
-
-# 9. Key package imports
+# 8. Key package imports
 for mod in aiogram natasha; do
     ".venv/bin/python" -c "import $mod" 2>/dev/null \
         && ok "package: $mod" \

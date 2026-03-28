@@ -3,22 +3,28 @@
 # Downloads model + KG data from HF, builds KuzuDB on first run. Idempotent.
 set -ex
 cd /app
+
+RED='\033[0;31m'; GREEN='\033[0;32m'; BOLD='\033[1m'; NC='\033[0m'
+
 echo "[entrypoint] Starting. KG_DATA_PATH=${KG_DATA_PATH} KUZU_PATH=${KUZU_PATH}"
 ls /app/data 2>/dev/null || echo "[entrypoint] /app/data is empty or missing"
 
-# GPU / torch info
-echo "[entrypoint] === Hardware ==="
-python -c "
-import torch, os
-print(f'[entrypoint] torch version : {torch.__version__}')
-print(f'[entrypoint] CUDA available: {torch.cuda.is_available()}')
-if torch.cuda.is_available():
-    print(f'[entrypoint] GPU           : {torch.cuda.get_device_name(0)}')
-    print(f'[entrypoint] VRAM          : {torch.cuda.get_device_properties(0).total_memory // 1024**3} GB')
-" 2>/dev/null || echo "[entrypoint] torch not importable yet"
+# ── Device banner ──────────────────────────────────────────────────────────────
+echo ""
+_CUDA=$(python -c "import torch; print(torch.cuda.is_available())" 2>/dev/null || echo "False")
+_TVER=$(python -c "import torch; print(torch.__version__)"         2>/dev/null || echo "?")
+if [[ "$_CUDA" == "True" ]]; then
+    _GPU=$(python -c "import torch; print(torch.cuda.get_device_name(0))" 2>/dev/null || echo "?")
+    _VRAM=$(python -c "import torch; print(torch.cuda.get_device_properties(0).total_memory // 1024**3)" 2>/dev/null || echo "?")
+    echo -e "  ${GREEN}${BOLD}[GPU]${NC}  ${_GPU}  ${_VRAM} GB VRAM  torch ${_TVER}"
+else
+    echo -e "  ${RED}${BOLD}[CPU]${NC}  No GPU detected — torch ${_TVER}  (embeddings will be slow)"
+fi
+echo ""
 
 # Disk space check before downloads
-AVAIL_KB=$(df -k /app/data 2>/dev/null | awk 'NR==2{print $4}' || df -k /app | awk 'NR==2{print $4}' || echo 9999999)
+AVAIL_KB=$(df -k /app/data 2>/dev/null | awk 'NR==2{print $4}' \
+        || df -k /app       | awk 'NR==2{print $4}' || echo 9999999)
 echo "[entrypoint] Available disk : $(( AVAIL_KB / 1024 )) MB"
 if [[ "$AVAIL_KB" -lt 5242880 ]]; then
     echo "[entrypoint] WARNING: Low disk space ($(( AVAIL_KB / 1024 )) MB). Downloads may fail."

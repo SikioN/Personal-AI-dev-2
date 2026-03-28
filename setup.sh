@@ -135,6 +135,19 @@ if [[ ${#IMPORT_ERRORS[@]} -gt 0 ]]; then
     exit 1
 fi
 
+# ── Device banner ──────────────────────────────────────────────────────────────
+echo ""
+if [[ "$TORCH_CUDA" == "True" ]]; then
+    CUDA_DEV_BANNER=$("$VENV_PYTHON" -c "import torch; print(torch.cuda.get_device_name(0))" 2>/dev/null || echo "?")
+    VRAM_BANNER=$("$VENV_PYTHON" -c "import torch; print(torch.cuda.get_device_properties(0).total_memory // 1024**3)" 2>/dev/null || echo "?")
+    echo -e "  ${GREEN}${BOLD}[GPU]${NC}  ${CUDA_DEV_BANNER}  ${VRAM_BANNER} GB VRAM  torch ${TORCH_VER}"
+elif [[ "$GPU_NAME" == "Apple Silicon (MPS)" ]]; then
+    echo -e "  ${GREEN}${BOLD}[GPU]${NC}  Apple Silicon (MPS)  torch ${TORCH_VER}"
+else
+    echo -e "  ${RED}${BOLD}[CPU]${NC}  No GPU detected — torch ${TORCH_VER}  (embeddings will be slow)"
+fi
+echo ""
+
 # ── 4. Directories ────────────────────────────────────────────────────────────
 echo -e "\n${BOLD}[4] Creating required directories${NC}"
 DIRS=(
@@ -213,18 +226,23 @@ fi
 
 # ── 9. --build-kg ─────────────────────────────────────────────────────────────
 if $BUILD_KG; then
-    echo -e "\n${BOLD}[9] Building KuzuDB + ChromaDB${NC}"
-    if [[ ! -f "$FULL_TXT" ]]; then
-        err "Cannot build KG: full.txt not found at $FULL_TXT"
+    echo -e "\n${BOLD}[9] Building KG (extract → KuzuDB + ChromaDB + TComplEx)${NC}"
+    INGEST_DIR="${INGEST_DIR:-extract/new_docs}"
+    TKBC_DIR="${TCOMPLEX_DATA_PATH:-wikidata_big/kg/tkbc_processed_data/wikidata_big}"
+    if [[ ! -d "$INGEST_DIR" ]]; then
+        err "INGEST_DIR not found: $INGEST_DIR\n  Place documents (PDF/DOCX/PPTX/TXT) there or set INGEST_DIR in .env"
         exit 1
     fi
     AVAIL_KB=$(df -k "$SCRIPT_DIR" 2>/dev/null | awk 'NR==2{print $4}' || echo 9999999)
     if [[ "$AVAIL_KB" -lt 2097152 ]]; then
         warn "Low disk space: $(( AVAIL_KB / 1024 )) MB available. Building KG may require ≥2 GB."
     fi
-    info "Running scripts/build_kg.py ..."
-    "$VENV_PYTHON" scripts/build_kg.py
-    ok "KuzuDB + ChromaDB built"
+    info "Running scripts/ingest_directory.py --dir $INGEST_DIR ..."
+    "$VENV_PYTHON" scripts/ingest_directory.py \
+        --dir "$INGEST_DIR" \
+        --tkbc-dir "$TKBC_DIR" \
+        --epochs "${RETRAIN_EPOCHS:-50}"
+    ok "KG build complete"
 fi
 
 # ── 10. Status summary ────────────────────────────────────────────────────────
