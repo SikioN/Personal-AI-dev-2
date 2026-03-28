@@ -515,6 +515,91 @@ sudo systemctl restart personal-ai-bot   # systemd
 
 ---
 
+## Пакетная загрузка документов (`ingest_directory.py`)
+
+Скрипт принимает директорию, параллельно обрабатывает все файлы (PDF/DOCX/PPTX/TXT),
+добавляет извлечённые факты в KuzuDB + ChromaDB и запускает переобучение TComplEx.
+
+### Запуск
+
+```bash
+source .venv/bin/activate
+python scripts/ingest_directory.py \
+    --dir /path/to/documents \
+    --tkbc-dir wikidata_big/kg/tkbc_processed_data/wikidata_big/
+```
+
+Или коротко (если `TCOMPLEX_DATA_PATH` задан в `.env`):
+
+```bash
+python scripts/ingest_directory.py --dir /path/to/documents
+```
+
+### Параметры
+
+| Параметр | По умолчанию | Описание |
+|---|---|---|
+| `--dir` | **обязательный** | Директория с документами |
+| `--tkbc-dir` | `$TCOMPLEX_DATA_PATH` | Путь к TKBC pickle-файлам для TComplEx |
+| `--workers` | `min(32, cpu×4)` | Потоков для параллельной обработки файлов |
+| `--epochs` | `50` | Эпох для переобучения TComplEx |
+| `--lr` | `1e-3` | Learning rate |
+| `--skip-retrain` | выкл | Пропустить переобучение TComplEx |
+| `--no-amp` | выкл | Отключить BF16/FP16 (принудительно FP32) |
+| `--reprocess` | выкл | Перезапустить извлечение для уже обработанных файлов |
+
+### Адаптация под GPU
+
+В начале скрипт определяет доступное устройство и выводит цветной баннер:
+
+- **Зелёный `[GPU]`** — CUDA GPU найден, используется аппаратное ускорение
+- **Красный `[CPU]`** — GPU не обнаружен, работа на процессоре (медленно)
+
+Настройки автоматически выбираются по объёму VRAM:
+
+| Тир | GPU | VRAM | Embed batch | AMP |
+|---|---|---|---|---|
+| `ultra` | A100 80 GB, H100 | ≥ 70 GB | 1024 | BF16 |
+| `high` | A100 40 GB, A6000 | ≥ 36 GB | 512 | BF16 |
+| `mid` | A30, A10G | ≥ 20 GB | 256 | BF16 |
+| `low` | A4, T4, RTX 3070 | ≥ 8 GB | 128 | FP16 |
+| `cpu` | — | — | 64 | — |
+
+При нескольких GPU DataParallel включается автоматически. BF16 AMP (поддерживается на A100/H100/A30) значительно ускоряет переобучение TComplEx. FP16 используется на старших картах Ampere/Turing.
+
+### Поведение при невалидных файлах
+
+Файлы с неподдерживаемым расширением (`.xlsx`, `.json`, и т.д.) пропускаются с предупреждением — обработка остальных продолжается. Уже обработанные файлы пропускаются автоматически (кеш в `extract_data/processed_files.json`).
+
+### Пример вывода
+
+```
+====  ingest_directory.py  ====
+
+══════════════════════════════════════════════════════════
+  [GPU]  NVIDIA A100-SXM4-80GB  80.0 GB VRAM
+        tier=ultra  AMP=bf16  embed_batch=1024
+══════════════════════════════════════════════════════════
+
+  Found 12 supported file(s)  (skipped 2 unsupported)
+  [WARN] Unsupported format — skipped: data.xlsx
+
+[1/3] Extracting facts from 12 file(s)  (workers=32)
+  [OK]  report_2023.pdf  →  47 facts
+  [OK]  strategy.docx   →  23 facts
+  ...
+  [OK]  Extracted 312 total facts in 42s
+
+[2/3] Writing 312 facts → KuzuDB + ChromaDB
+  [OK]  Saved 298 facts  (14s)
+
+[3/3] TComplEx retrain
+  [OK]  Training rows: 3,104,512  epochs=50  lr=0.001  AMP=True
+  [OK]  Retrain done in 183s — checkpoint saved
+```
+
+---
+
 ## TComplEx: переобучение
 
 TComplEx — темпоральный скорер, присваивающий логиты квадруплетам. Переобучение нужно после значительного пополнения базы знаний, чтобы новые сущности корректно ранжировались на стадии Scoring.
@@ -610,6 +695,7 @@ personal-ai/
 │
 ├── scripts/
 │   ├── build_kg.py                         # Первичная сборка KG (вызывается setup.sh)
+│   ├── ingest_directory.py                 # Пакетная загрузка документов + retrain
 │   ├── incremental_update.py               # Атомарное добавление новых фактов
 │   ├── retrain_tcomplex.py                 # Переобучение темпорального скорера
 │   ├── verify_ingestion.py                 # Проверка состояния графа
