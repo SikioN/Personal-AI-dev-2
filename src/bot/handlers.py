@@ -40,6 +40,8 @@ _ASK_COOLDOWN_SEC = 5.0
 
 # 5.4: rate-limit — max 3 concurrent heavy-compute requests (ask/facts/graph)
 _ask_semaphore: Optional[asyncio.Semaphore] = None
+# max 1 concurrent debug trace — sys.stdout redirect is not thread-safe
+_dbg_semaphore: Optional[asyncio.Semaphore] = None
 
 
 def _get_semaphore() -> asyncio.Semaphore:
@@ -47,6 +49,13 @@ def _get_semaphore() -> asyncio.Semaphore:
     if _ask_semaphore is None:
         _ask_semaphore = asyncio.Semaphore(3)
     return _ask_semaphore
+
+
+def _get_dbg_semaphore() -> asyncio.Semaphore:
+    global _dbg_semaphore
+    if _dbg_semaphore is None:
+        _dbg_semaphore = asyncio.Semaphore(1)
+    return _dbg_semaphore
 
 
 HELP_TEXT = (
@@ -393,7 +402,7 @@ async def _run_debug_trace(message: Message) -> None:
             sys.stdout = old
         return buf.getvalue()
 
-    async with _get_semaphore():
+    async with _get_dbg_semaphore():
         try:
             engine, _, _ = await asyncio.to_thread(_get_engine_and_navigator)
             out = await asyncio.to_thread(_capture_debug, engine, query)

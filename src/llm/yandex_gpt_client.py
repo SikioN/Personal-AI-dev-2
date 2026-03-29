@@ -55,8 +55,8 @@ class YandexGPTClient(BaseLLMClient):
             messages.append({"role": "system", "text": system})
         messages.append({"role": "user", "text": prompt})
 
-        # If json_mode is requested, append a hint to the system message
-        if json_mode and system:
+        # If json_mode is requested, append a hint to the system/user message
+        if json_mode:
             messages[0]["text"] += "\nOutput ONLY valid JSON. No extra text."
 
         payload = {

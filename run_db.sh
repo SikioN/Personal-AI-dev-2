@@ -63,7 +63,7 @@ case "$LLM" in
 esac
 
 # 5. E5 model
-E5_PATH="${FINETUNED_MODEL_PATH:-models/wikidata_finetuned_remote/wikidata_finetuned}"
+E5_PATH="${FINETUNED_MODEL_PATH:-models/e5}"
 [[ -f "$E5_PATH/config.json" ]] \
     || err "E5 model not found at: $E5_PATH\n  Run: source .venv/bin/activate && python -c \"from sentence_transformers import SentenceTransformer; SentenceTransformer('intfloat/multilingual-e5-small').save('$E5_PATH')\""
 ok "E5 model: $E5_PATH"

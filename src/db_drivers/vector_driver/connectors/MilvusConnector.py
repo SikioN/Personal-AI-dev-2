@@ -184,13 +184,13 @@ class MilvusConnector(AbstractVectorDatabaseConnection):
             self, query_instances: List[VectorDBInstance], n_results: int = 50, subset_ids: Union[None, List[str]]= None,
             includes: List[str]  = ['embeddings', 'documents', 'metadatas']) -> List[List[Tuple[float, VectorDBInstance]]]:
         if len(query_instances) < 1:
-            return ValueError
+            raise ValueError("query_instances must not be empty")
         for inst in query_instances:
             if type(inst.embedding) in [torch.Tensor, np.ndarray]:
                 raise ValueError
 
         if n_results < 1:
-            return [[]*len(query_instances)]
+            return [[] for _ in range(len(query_instances))]
 
         # костыль
         f_includes = list(map(lambda f_name: f_name[:-1],includes))

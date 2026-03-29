@@ -102,7 +102,7 @@ def main():
     model_path = (
         os.environ.get("FINETUNED_MODEL_PATH")
         or os.environ.get("MODEL_PATH")
-        or os.path.join(ROOT_DIR, "models/wikidata_finetuned_remote/wikidata_finetuned")
+        or os.path.join(ROOT_DIR, "models/e5")
     )
     embedder_cfg = EmbedderModelConfig(
         model_name_or_path=model_path if os.path.exists(os.path.join(model_path, "config.json"))

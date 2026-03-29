@@ -213,10 +213,41 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
 
         with self._lock:
             for i, t_id in enumerate(ids):
+                cur_info = delete_info.get(i, {})
+                need_s = cur_info.get('s_node', False)
+                need_e = cur_info.get('e_node', False)
+
+                # Capture node str_ids before deleting the relation
+                s_id = e_id = None
+                if need_s or need_e:
+                    try:
+                        r = self.conn.execute(
+                            'MATCH (s_node)-[rel]->(e_node) WHERE rel.t_id = $tid '
+                            'RETURN s_node.str_id AS s_id, e_node.str_id AS e_id;',
+                            {"tid": t_id}
+                        ).get_as_df()
+                        if not r.empty:
+                            s_id = r['s_id'][0]
+                            e_id = r['e_id'][0]
+                    except Exception as ex:
+                        logger.warning("[KuzuDB] delete: failed to fetch node ids for %s: %s", t_id, ex)
+
                 self.conn.execute(
                     'MATCH (s_node)-[rel]->(e_node) WHERE rel.t_id = $tid DELETE rel;',
                     {"tid": t_id}
                 )
+
+                # Delete orphaned nodes as indicated by delete_info
+                if need_s and s_id:
+                    try:
+                        self.conn.execute('MATCH (n) WHERE n.str_id = $id DELETE n;', {"id": s_id})
+                    except Exception as ex:
+                        logger.warning("[KuzuDB] delete: could not remove s_node %s: %s", s_id, ex)
+                if need_e and e_id:
+                    try:
+                        self.conn.execute('MATCH (n) WHERE n.str_id = $id DELETE n;', {"id": e_id})
+                    except Exception as ex:
+                        logger.warning("[KuzuDB] delete: could not remove e_node %s: %s", e_id, ex)
 
 
     def read_by_name(self, name: str, object_type: Union[RelationType, NodeType], object: str = 'relation') -> List[Union[Quadruplet, Node]]:
@@ -311,7 +342,7 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
         if type(base_node_id) is not str:
             raise ValueError
 
-        str_accepted_nodes = ''.join(list(map(lambda tpe: f':{tpe.value}', accepted_n_types)))
+        str_accepted_nodes = ':' + '|'.join(tpe.value for tpe in accepted_n_types)
 
         with self._lock:
             raw_nodes = self.conn.execute(
@@ -399,6 +430,22 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
             except Exception:
                 r_count = 0
             return {'quadruplets': r_count, 'nodes': n_count}
+        if id_type == 'relation':
+            try:
+                rel_tables = list(dict.fromkeys(
+                    self.config.params['table_type_map']['relations']['forward'].values()
+                ))
+                total = 0
+                for tbl in rel_tables:
+                    r = self.conn.execute(
+                        f"MATCH (n1)-[rel:{tbl}]->(n2) WHERE rel.str_id = $id RETURN count(rel) AS cnt;",
+                        {"id": id}
+                    ).get_as_df()
+                    if not r.empty:
+                        total += int(r['cnt'][0])
+                return total
+            except Exception:
+                return 0
         return None
 
     def item_exist(self, id: str, id_type: str = 'quadruplet') -> bool:

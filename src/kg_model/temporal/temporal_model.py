@@ -167,12 +167,6 @@ class TemporalScorer:
         input_tensor = torch.tensor([[s_id, r_id, o_id, t_id]], device=self.device)
 
         with torch.no_grad():
-            score = self.model.forward(input_tensor)
-            # TComplEx returns: (scores, regularizer, etc.) or just scores depending on method
-            # Wait, tkbc_models.py TComplEx.forward returns tuple: (score, regularizer, time_emb)
-            # But TComplEx.score(x) returns just score!
-
-            # Let's use score(x) method
             raw_score = self.model.score(input_tensor)
 
             # Usually these scores are logits. We can apply sigmoid if we want 0-1 prob,

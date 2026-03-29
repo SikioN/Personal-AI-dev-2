@@ -1,7 +1,7 @@
 """GigaChat LLM client (Sber OAuth2 + OpenAI-compatible inference)."""
 import os
 import json
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 
 import httpx
 
@@ -22,7 +22,9 @@ class GigaChatClient(BaseLLMClient):
         self,
         credentials: Optional[str] = None,
         model: Optional[str] = None,
-        verify_ssl: bool = False,
+        verify_ssl: Union[bool, str] = True,
+        # True = standard TLS verification; str = path to CA bundle (e.g. '/path/to/sber-ca.pem');
+        # False = disable verification (insecure, do not use in prod)
     ):
         self.credentials = credentials or os.environ.get("GIGACHAT_CREDENTIALS", "")
         self.model = model or os.environ.get("GIGACHAT_MODEL", "GigaChat")

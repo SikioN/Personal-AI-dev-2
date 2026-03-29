@@ -6,37 +6,28 @@
 [![ChromaDB](https://img.shields.io/badge/Vector_DB-ChromaDB-purple.svg)](https://www.trychroma.com/)
 [![TComplEx](https://img.shields.io/badge/Temporal_Scorer-TComplEx-red.svg)](https://arxiv.org/abs/2005.07782)
 
-Production-система вопросно-ответного поиска поверх графов знаний. Реализует гибридный RAG с темпоральным ранжированием: структурный поиск по графу + нейросетевой семантический поиск + математическая оценка правдоподобия фактов через TComplEx.
-
----
-
-## Быстрый старт (3 команды)
-
-```bash
-git clone <repo-url> personal-ai && cd personal-ai
-bash setup.sh                # создаёт .venv, устанавливает зависимости, копирует .env.example → .env
-bash run_inmemory.sh         # запускает бота в in-memory режиме (без БД, без модели E5)
-```
-
-> In-memory режим работает без ChromaDB, KuzuDB и TComplEx — только `full.txt` + ключевой поиск.
-> Для полноценной работы смотрите [Развёртывание](#развёртывание).
+Production-система вопросно-ответного поиска поверх графов знаний. Реализует гибридный RAG с темпоральным ранжированием: структурный поиск по графу (KuzuDB / Neo4j / In-Memory) + нейросетевой семантический поиск (ChromaDB + E5) + математическая оценка правдоподобия фактов через TComplEx.
 
 ---
 
 ## Содержание
 
+- [Быстрый старт с нуля — своими данными](#быстрый-старт-с-нуля--своими-данными)
 - [Архитектура](#архитектура)
 - [Режимы работы](#режимы-работы)
 - [Развёртывание](#развёртывание)
   - [1. Клонирование и окружение](#1-клонирование-и-окружение)
   - [2. E5-модель (обязательно)](#2-e5-модель-обязательно)
-  - [3. TComplEx (опционально)](#3-tcomplex-опционально)
+  - [3. TComplEx (требуется для темпорального ранжирования)](#3-tcomplex-требуется-для-темпорального-ранжирования)
   - [4. Конфигурация .env](#4-конфигурация-env)
   - [5. Форматы данных](#5-форматы-данных)
   - [6. Первичная сборка KG](#6-первичная-сборка-kg)
   - [7. Запуск бота](#7-запуск-бота)
+  - [8. Автозапуск через systemd](#8-автозапуск-через-systemd)
 - [Добавление новых фактов в граф знаний](#добавление-новых-фактов-в-граф-знаний)
+- [Пакетная загрузка документов](#пакетная-загрузка-документов-ingest_directorypy)
 - [TComplEx: переобучение](#tcomplex-переобучение)
+- [Интерфейс и интерпретация ответов](#интерфейс-и-интерпретация-ответов)
 - [Команды Telegram-бота](#команды-telegram-бота)
 - [Структура проекта](#структура-проекта)
 - [Ключевые классы](#ключевые-классы)
@@ -44,67 +35,44 @@ bash run_inmemory.sh         # запускает бота в in-memory режи
 
 ---
 
+## Быстрый старт с нуля — своими данными
+
+Полный цикл от пустой машины до работающего бота на ваших документах. Скопируйте блоки команд последовательно, затем читайте пояснения ниже.
+
+> **Требования:** Python 3.10, CUDA GPU (минимум 8 GB VRAM, обязательно для обучения TComplEx), API-ключ LLM (DeepSeek / GigaChat / YandexGPT / OpenAI), токен Telegram-бота от @BotFather.
+
+### Все команды — от клонирования до запуска бота
+
+```bash
+git clone https://github.com/SikioN/Personal-AI-dev-2 personal-ai && cd personal-ai
+cp .env.example .env
+```
+
+```bash
+nano .env
+```
+
+```bash
+cp /path/to/your/documents/* extract/new_docs/
+bash setup.sh --build-kg
+```
+
+```bash
+bash run_db.sh
+```
+
+**1.** Клонирование репозитория и копирование шаблона конфигурации.
+**2.** Заполнить `.env`: `TELEGRAM_BOT_TOKEN`, `LLM_BACKEND` + API-ключ, пути к БД и моделям.
+**3.** Разместить документы (PDF/DOCX/PPTX/TXT) в `extract/new_docs/`. `setup.sh --build-kg` создаёт окружение, скачивает E5, строит граф из документов и обучает TComplEx.
+**4.** Запустить бота в production-режиме (KuzuDB + ChromaDB).
+
+> Подробные инструкции по каждому шагу — см. раздел [Развёртывание](#развёртывание).
+
 ## Архитектура
 
-Ядро системы — [`QAEngine`](src/pipelines/qa/qa_engine.py), реализующий 7-стадийный конвейер:
+Ядро системы — [`QAEngine`](src/pipelines/qa/qa_engine.py), реализующий 7-стадийный конвейер: Extraction → Entity Resolution → Graph + Vector Retrieval → TComplEx Scoring → Selection → Generation.
 
-```
-Запрос пользователя
-        |
-        v
-+-----------------------------------------------------------------------+
-|  Стадия 1 — Extraction  [stages/extraction.py]                        |
-|  LLM извлекает сущности, тип вопроса (simple_time / before_after /    |
-|  time_join / first_last) и временные рамки.                           |
-+-----------------------------------------------------------------------+
-        |
-        v
-+-----------------------------------------------------------------------+
-|  Стадия 2 — Entity Resolution  [ingestion/entity_resolver.py]         |
-|  5-уровневый каскад:                                                  |
-|  L1: exact_id → L2: graph lookup → L2.5: rapidfuzz≥90                |
-|  → L3: vector<0.25 → L4: LLM → L5: новый LOCAL_ id                   |
-+-----------------------------------------------------------------------+
-        |
-        v
-+-----------------------------------------------------------------------+
-|  Стадия 3 — Graph Retrieval  [stages/retrieval.py]                    |
-|  Соседи 1-го порядка вокруг разрешённых сущностей.                    |
-|  Бэкенды: KuzuDB / Neo4j / InMemoryGraph.                             |
-+-----------------------------------------------------------------------+
-        |
-        v
-+-----------------------------------------------------------------------+
-|  Стадия 4 — Vector Retrieval  [stages/retrieval.py]                   |
-|  ChromaDB + finetuned multilingual-e5-small.                          |
-|  "president" ~ "head of state", "СССР" ~ "Soviet Union".             |
-+-----------------------------------------------------------------------+
-        |  граф + вектор (объединение)
-        v
-+-----------------------------------------------------------------------+
-|  Стадия 5 — Scoring (TComplEx)  [stages/scoring.py]                   |
-|  Тензорная факторизация оценивает правдоподобие каждого факта.        |
-|  Темпоральный фильтр отсекает факты вне диапазона запроса.            |
-|  Alpha-вес адаптируется по типу вопроса.                              |
-+-----------------------------------------------------------------------+
-        |
-        v
-+-----------------------------------------------------------------------+
-|  Стадия 6 — Selection (Confidence Gap)  [stages/scoring.py]           |
-|  Оставляет только факты, чья оценка значимо превышает фоновый шум.    |
-+-----------------------------------------------------------------------+
-        |
-        v
-+-----------------------------------------------------------------------+
-|  Стадия 7 — Generation (LLM)  [stages/generation.py]                  |
-|  LLM формирует ответ строго по отобранным фактам.                     |
-|  Поддержка 6 бэкендов: DeepSeek, YandexGPT, GigaChat, OpenAI,        |
-|  Qwen, Ollama.                                                         |
-+-----------------------------------------------------------------------+
-        |
-        v
-    Ответ пользователю
-```
+![Architecture diagram](diagram.png)
 
 ---
 
@@ -112,24 +80,26 @@ bash run_inmemory.sh         # запускает бота в in-memory режи
 
 | Режим | Переменные | Граф | Вектор | Когда использовать |
 |---|---|---|---|---|
-| **SimpleInMemory** | `USE_INMEMORY=true` + движок упал | `raw_quads` список | numpy E5 | Демо без данных, fallback при сбое |
-| **Full + InMemoryGraph** | `USE_INMEMORY=true` + движок поднялся | `InMemoryGraphConnector` | /tmp ChromaDB | Разработка с full.txt, без сервера БД |
-| **KuzuDB** | `USE_INMEMORY=false`<br>`GRAPH_BACKEND=kuzu` | KuzuDB (файловый) | ChromaDB (файловый) | **Production без сервера** |
-| **Neo4j** | `USE_INMEMORY=false`<br>`GRAPH_BACKEND=neo4j` | Neo4j 5.x | ChromaDB (файловый) | Кластер, многопользовательский доступ |
+| **SimpleInMemory** | `USE_INMEMORY=true` + движок упал | `raw_quads` список | numpy E5 | Демо без данных, fallback при сбое БД |
+| **Full + InMemoryGraph** | `USE_INMEMORY=true` | `InMemoryGraphConnector` | /tmp ChromaDB | Разработка, тесты без сервера БД |
+| **KuzuDB** | `USE_INMEMORY=false`, `GRAPH_BACKEND=kuzu` | KuzuDB (файловый) | ChromaDB (файловый) | **Production без сервера — рекомендуется** |
+| **Neo4j** | `USE_INMEMORY=false`, `GRAPH_BACKEND=neo4j` | Neo4j 5.x | ChromaDB (файловый) | Кластер, многопользовательский доступ |
 
-**Рекомендуется KuzuDB** — не требует отдельного сервера, данные хранятся локально.
+**Рекомендуется KuzuDB** для большинства случаев — не требует отдельного процесса, данные хранятся в директории `data/kuzu_db/`, легко переносятся.
 
-### Два sub-режима In-Memory
+### Подробно о sub-режимах In-Memory
 
-**SimpleInMemoryEngine** (fallback при сбое):
-- Данные: `raw_quads` список из `full.txt` + numpy-эмбеддинги
-- Ингестия через бота сохраняется в stash-файл JSON
-- Нет ChromaDB, нет KuzuDB
+**SimpleInMemoryEngine** (fallback):
+- Запускается, когда основной движок не смог инициализироваться (нет KuzuDB, нет E5-модели)
+- Данные: квадруплеты из `full.txt` хранятся в памяти как Python-список; эмбеддинги строятся через numpy
+- Новые факты через бота сохраняются в stash-файл (`INMEMORY_STASH_PATH`) и загружаются при следующем старте
+- Нет ChromaDB, нет KuzuDB — работают только стадии 1, 3, 7
 
-**Full Engine + InMemoryGraphConnector** (основной `USE_INMEMORY=true`):
-- `InMemoryGraphConnector` заполняется из `full.txt`
-- ChromaDB в `/tmp/personalai_chroma/` (сбрасывается при перезапуске)
-- Все стадии QAEngine работают в полном объёме
+**Full Engine + InMemoryGraphConnector** (USE_INMEMORY=true, движок запустился):
+- `InMemoryGraphConnector` заполняется из `full.txt` при старте
+- ChromaDB в `/tmp/personalai_chroma/` — данные хранятся только пока процесс живёт
+- Все 7 стадий QAEngine работают в полном объёме
+- Подходит для разработки: нет необходимости в постоянном хранилище
 
 ---
 
@@ -138,55 +108,41 @@ bash run_inmemory.sh         # запускает бота в in-memory режи
 ### 1. Клонирование и окружение
 
 ```bash
-git clone <repo-url> personal-ai
+git clone https://github.com/SikioN/Personal-AI-dev-2 personal-ai
 cd personal-ai
-
-# Python строго 3.10
-python3.10 -m venv .venv
-source .venv/bin/activate   # Linux / macOS
-
-pip install --upgrade pip
-pip install -r requirements.txt
-
-# Создаёт папки, копирует .env.example → .env
-bash setup.sh
+cp .env.example .env
+bash setup.sh --build-kg
 ```
 
-> **Apple Silicon (M1/M2/M3):** PyTorch автоматически выбирает MPS. Доп. настройка не нужна.
->
-> **CUDA GPU:**
-> ```bash
-> pip install torch --index-url https://download.pytorch.org/whl/cu121
-> ```
+`setup.sh` автоматически: создаёт `.venv`, определяет CUDA и ставит совместимый torch (cu118/cu121), устанавливает `requirements.txt`, скачивает E5-модель, создаёт директории. Флаг `--build-kg` дополнительно запускает извлечение фактов и сборку KG.
+
+Проверка CUDA после установки:
+
+```bash
+.venv/bin/python -c "import torch; print('CUDA:', torch.cuda.is_available()); print('GPU:', torch.cuda.get_device_name(0))"
+```
+
+> Переобучение TComplEx **требует CUDA GPU**. Без GPU модель не обучится на датасете промышленного размера за разумное время. Инференс (ответы на вопросы) работает на CPU, но значительно медленнее.
 
 ---
 
 ### 2. E5-модель (обязательно)
 
+Модель используется в стадии 4 (векторный поиск ChromaDB) и при разрешении сущностей (L3).
+
+- **Свои данные (не Wikidata)** — `setup.sh` скачивает `intfloat/multilingual-e5-small` автоматически в `models/e5/`. Никаких дополнительных действий не требуется.
+- **Данные Wikidata** — замените содержимое `models/e5/` дообученными весами до запуска `setup.sh`:
+
 ```bash
-mkdir -p models/wikidata_finetuned_remote/wikidata_finetuned
+mkdir -p models/e5
+scp -r user@server:/path/to/wikidata_finetuned/* models/e5/
 ```
 
-**Вариант A — базовая модель с HuggingFace:**
-```bash
-python -c "
-from sentence_transformers import SentenceTransformer
-SentenceTransformer('intfloat/multilingual-e5-small').save(
-    'models/wikidata_finetuned_remote/wikidata_finetuned'
-)
-print('E5 saved.')
-"
-```
+`setup.sh` проверяет `models/e5/config.json` — если файл существует, скачивание пропускается.
 
-**Вариант B — finetuned-версия с сервера:**
-```bash
-scp -r user@server:/path/to/wikidata_finetuned \
-    models/wikidata_finetuned_remote/wikidata_finetuned
+После загрузки директория должна содержать:
 ```
-
-После загрузки в директории должны быть:
-```
-models/wikidata_finetuned_remote/wikidata_finetuned/
+models/e5/
 ├── config.json
 ├── tokenizer_config.json
 ├── tokenizer.json
@@ -195,17 +151,18 @@ models/wikidata_finetuned_remote/wikidata_finetuned/
 
 ---
 
-### 3. TComplEx (опционально)
+### 3. TComplEx (требуется для темпорального ранжирования)
 
-Чекпоинт `.ckpt` обязателен только для темпорального ранжирования (стадия 5). Без него система работает на 6 стадиях.
+Чекпоинт `.ckpt` используется на стадии 5 (темпоральное ранжирование). Без него система работает на 6 стадиях — ответы на простые вопросы сохраняются, но качество на темпоральных запросах ("кем был X в 2020 году") значительно падает. **Рекомендуется всегда иметь актуальный чекпоинт.** Переобучение выполняется автоматически через `ingest_directory.py` и требует CUDA GPU.
 
 ```bash
 mkdir -p models/cronkgqa
-# Скопировать с другого развёртывания:
-scp user@server:/path/to/tcomplex.ckpt models/cronkgqa/
+
+# Скопировать готовый чекпоинт:
+scp user@server:/path/to/tcomplex.ckpt models/cronkgqa/tcomplex.ckpt
 ```
 
-Обучить с нуля: используйте `kaggle_job/` (полный цикл tkbc).
+Для обучения с нуля на собственных данных используйте `kaggle_job/` (полный цикл tkbc) или запустите `ingest_directory.py` — он автоматически дообучит TComplEx после загрузки документов.
 
 ---
 
@@ -213,79 +170,101 @@ scp user@server:/path/to/tcomplex.ckpt models/cronkgqa/
 
 ```bash
 cp .env.example .env
+# Отредактируйте .env в вашем редакторе
 ```
 
 #### Полная таблица переменных окружения
 
-| Переменная | Тип | Default | Описание |
+| Переменная | Default | Обязательно | Описание |
 |---|---|---|---|
-| `TELEGRAM_BOT_TOKEN` | str | — | **Обязательно.** Токен бота от @BotFather |
-| `LLM_BACKEND` | str | `deepseek` | Бэкенд LLM: `deepseek` \| `yandexgpt` \| `gigachat` \| `openai` \| `qwen` \| `ollama` |
-| `USE_INMEMORY` | bool | `true` | `true` = in-memory режим; `false` = KuzuDB/Neo4j |
-| `GRAPH_BACKEND` | str | `neo4j` | При `USE_INMEMORY=false`: `kuzu` \| `neo4j` |
-| `KG_DATA_PATH` | path | `wikidata_big/kg` | Путь к директории с `full.txt` |
-| `FINETUNED_MODEL_PATH` | path | `models/wikidata_finetuned_remote/wikidata_finetuned` | Путь к E5-модели |
-| `KUZU_PATH` | path | `data/kuzu_db` | Директория KuzuDB |
-| `CHROMA_NODES_PATH` | path | `data/graph_structures/vectorized_nodes/default` | ChromaDB узлы |
-| `CHROMA_QUADS_PATH` | path | `data/graph_structures/vectorized_quadruplets/default` | ChromaDB квадруплеты |
-| `TCOMPLEX_CHECKPOINT` | path | `models/cronkgqa/tcomplex.ckpt` | Чекпоинт TComplEx |
-| `TCOMPLEX_DATA_PATH` | path | `wikidata_big/kg/tkbc_processed_data/wikidata_big/` | Pickle-файлы для TComplEx |
-| `NEO4J_HOST` | str | `localhost` | Neo4j хост |
-| `NEO4J_PORT` | int | `7687` | Neo4j порт |
-| `NEO4J_USER` | str | `neo4j` | Neo4j пользователь |
-| `NEO4J_PASSWORD` | str | `password` | Neo4j пароль |
-| `NEO4J_DB` | str | `neo4j` | Neo4j база данных |
-| `QA_CONFIDENCE_GAP` | float | `0.20` | Порог Confidence Gap для отбора фактов |
-| `QA_TCOMPLEX_THRESHOLD` | float | `-3.0` | Порог TComplEx логита |
+| `TELEGRAM_BOT_TOKEN` | — | **Да** | Токен бота от @BotFather |
+| `LLM_BACKEND` | `deepseek` | **Да** | Бэкенд LLM: `deepseek` \| `yandexgpt` \| `gigachat` \| `openai` \| `qwen` \| `ollama` |
+| `USE_INMEMORY` | `true` | **Да** | `false` = KuzuDB/Neo4j (production); `true` = in-memory |
+| `GRAPH_BACKEND` | `kuzu` | При `USE_INMEMORY=false` | `kuzu` \| `neo4j` |
+| `KG_DATA_PATH` | `wikidata_big/kg` | При `USE_INMEMORY=true` | Путь к директории с `full.txt` |
+| `FINETUNED_MODEL_PATH` | `models/e5` | **Да** | Путь к E5-модели |
+| `KUZU_PATH` | `data/kuzu_db` | При `GRAPH_BACKEND=kuzu` | Директория KuzuDB |
+| `CHROMA_NODES_PATH` | `data/graph_structures/vectorized_nodes/default` | **Да** | ChromaDB: индекс узлов |
+| `CHROMA_QUADS_PATH` | `data/graph_structures/vectorized_quadruplets/default` | **Да** | ChromaDB: индекс квадруплетов |
+| `TCOMPLEX_CHECKPOINT` | `models/cronkgqa/tcomplex.ckpt` | Нет | Чекпоинт TComplEx |
+| `TCOMPLEX_DATA_PATH` | `wikidata_big/kg/tkbc_processed_data/wikidata_big/` | Нет | Pickle-файлы TComplEx |
+| `EXTRACT_DATA_DIR` | `extract_data` | Нет | Кеш реестра сущностей и обработанных файлов |
+| `INGEST_STATS_PATH` | `data/ingest_stats.json` | Нет | Файл статистики ингестии |
+| `INMEMORY_STASH_PATH` | `data/inmemory_stash.json` | Нет | Stash-файл для in-memory режима |
+| `INGEST_DIR` | `extract/new_docs` | Нет | Директория для `setup.sh --build-kg` |
+| `NEO4J_HOST` | `localhost` | При `GRAPH_BACKEND=neo4j` | Neo4j хост |
+| `NEO4J_PORT` | `7687` | При `GRAPH_BACKEND=neo4j` | Neo4j порт |
+| `NEO4J_USER` | `neo4j` | При `GRAPH_BACKEND=neo4j` | Neo4j пользователь |
+| `NEO4J_PASSWORD` | — | При `GRAPH_BACKEND=neo4j` | Neo4j пароль |
+| `NEO4J_DB` | `neo4j` | При `GRAPH_BACKEND=neo4j` | Neo4j база данных |
+| `QA_CONFIDENCE_GAP` | `0.20` | Нет | Порог Confidence Gap (стадия 6) |
+| `QA_TCOMPLEX_THRESHOLD` | `-3.0` | Нет | Минимальный логит TComplEx (стадия 5) |
+| `HF_TOKEN` | — | Нет | HuggingFace token для приватных репозиториев |
 
-#### LLM-бэкенды
+#### LLM-бэкенды: конфигурация
 
 ```ini
-# DeepSeek (2 переменные)
+# DeepSeek (рекомендуется — низкая стоимость, высокое качество)
+LLM_BACKEND=deepseek
 DEEPSEEK_API_KEY=sk-...
 DEEPSEEK_MODEL=deepseek-chat
 
-# YandexGPT (3 переменные — обязательны все три)
+# YandexGPT (требует все три переменные)
+LLM_BACKEND=yandexgpt
 YANDEX_API_KEY=...
 YANDEX_FOLDER_ID=...
 YANDEX_MODEL=yandexgpt
 
 # GigaChat (Сбер) — OAuth2 credentials
+LLM_BACKEND=gigachat
 GIGACHAT_CREDENTIALS=...
 GIGACHAT_MODEL=GigaChat
 
-# OpenAI / совместимые (OPENAI_BASE_URL пустой для api.openai.com)
+# OpenAI / совместимые API
+LLM_BACKEND=openai
 OPENAI_API_KEY=sk-...
 OPENAI_MODEL=gpt-4o-mini
-OPENAI_BASE_URL=
+OPENAI_BASE_URL=          # пусто для api.openai.com, или URL proxy
 
 # Qwen (DashScope)
+LLM_BACKEND=qwen
 QWEN_API_KEY=...
 QWEN_MODEL=qwen-plus
 
-# Ollama (самохостинг)
+# Ollama (локальный самохостинг)
+LLM_BACKEND=ollama
 OLLAMA_URL=http://localhost:11434
 OLLAMA_MODEL=llama3.2
 ```
 
-#### Режим KuzuDB (рекомендуется)
+#### Пример конфигурации для KuzuDB (production)
 
 ```ini
+TELEGRAM_BOT_TOKEN=<ваш_токен>
+LLM_BACKEND=deepseek
+DEEPSEEK_API_KEY=<ваш_ключ>
+DEEPSEEK_MODEL=deepseek-chat
+
 USE_INMEMORY=false
 GRAPH_BACKEND=kuzu
-KUZU_PATH=/absolute/path/to/personal-ai/data/kuzu_db
-CHROMA_NODES_PATH=/absolute/path/to/personal-ai/data/graph_structures/vectorized_nodes/default
-CHROMA_QUADS_PATH=/absolute/path/to/personal-ai/data/graph_structures/vectorized_quadruplets/default
-FINETUNED_MODEL_PATH=/absolute/path/to/personal-ai/models/wikidata_finetuned_remote/wikidata_finetuned
-TCOMPLEX_CHECKPOINT=/absolute/path/to/personal-ai/models/cronkgqa/tcomplex.ckpt
-TCOMPLEX_DATA_PATH=/absolute/path/to/personal-ai/wikidata_big/kg/tkbc_processed_data/wikidata_big
+KUZU_PATH=/srv/personal-ai/data/kuzu_db
+CHROMA_NODES_PATH=/srv/personal-ai/data/graph_structures/vectorized_nodes/default
+CHROMA_QUADS_PATH=/srv/personal-ai/data/graph_structures/vectorized_quadruplets/default
+FINETUNED_MODEL_PATH=/srv/personal-ai/models/e5
+TCOMPLEX_CHECKPOINT=/srv/personal-ai/models/cronkgqa/tcomplex.ckpt
+TCOMPLEX_DATA_PATH=/srv/personal-ai/wikidata_big/kg/tkbc_processed_data/wikidata_big
 ```
 
-#### Режим In-Memory
+#### Пример конфигурации для in-memory (разработка)
 
 ```ini
+TELEGRAM_BOT_TOKEN=<ваш_токен>
+LLM_BACKEND=deepseek
+DEEPSEEK_API_KEY=<ваш_ключ>
+
 USE_INMEMORY=true
-KG_DATA_PATH=/absolute/path/to/personal-ai/wikidata_big/kg
+KG_DATA_PATH=/srv/personal-ai/wikidata_big/kg
+FINETUNED_MODEL_PATH=/srv/personal-ai/models/e5
 ```
 
 ---
@@ -300,7 +279,10 @@ Q76	P106	Q82955	+0000-01-01	+9999-01-01
 ```
 
 Колонки: `subject_id`, `relation_id`, `object_id`, `time_start`, `time_end`.
-Без временных меток используйте `+0000-01-01` / `+9999-01-01` как заглушки.
+
+- ID-формат: рекомендуется Wikidata-совместимый (`Q123`, `P456`) или произвольный строковый
+- Временные метки: формат `+YYYY-MM-DD`; используйте `+0000-01-01` / `+9999-01-01` для вечных фактов
+- Файл `wd_id2entity_text.txt` и `wd_id2relation_text.txt` предоставляют текстовые метки для ID
 
 #### wd_id2entity_text.txt / wd_id2relation_text.txt (TSV, 2 колонки)
 
@@ -309,7 +291,7 @@ Q76	Barack Obama
 P26	spouse
 ```
 
-Используются для подстановки меток вместо Q/P-идентификаторов.
+Используются для подстановки читаемых имён вместо Q/P-идентификаторов в ответах.
 
 #### tkbc_processed_data/ — Pickle-файлы TComplEx
 
@@ -317,10 +299,10 @@ P26	spouse
 |---|---|---|
 | `ent_id` | `dict[str, int]` | entity_id → числовой индекс |
 | `rel_id` | `dict[str, int]` | relation_id → числовой индекс |
-| `ts_id` | `dict[str, int]` | timestamp → числовой индекс |
+| `ts_id` | `dict[(year, month, day), int]` | timestamp → числовой индекс |
 | `train.pickle` | `list[tuple[int,int,int,int,int]]` | (s, r, o, ts, te) числовые индексы |
 
-#### facts.json — формат для инкрементального добавления
+#### facts.json — формат для инкрементального добавления через CLI
 
 ```json
 [
@@ -341,27 +323,28 @@ P26	spouse
 ]
 ```
 
-- `id`: явный Wikidata Q-ID или `null` — система сгенерирует `LOCAL_` идентификатор
+- `id`: явный Wikidata Q-ID или `null` — система сгенерирует `LOCAL_` идентификатор автоматически
 - `relation`: рекомендуется `snake_case`
-- `time_end: null` означает «по настоящее время»
+- `time_end: null` означает "по настоящее время"
 
 ---
 
 ### 6. Первичная сборка KG
 
-Выполняется **один раз** при первоначальном развёртывании.
+`setup.sh --build-kg` — стандартный способ первичной сборки. Внутри вызывает `scripts/ingest_directory.py` с директорией из `INGEST_DIR` (`.env`, по умолчанию `extract/new_docs/`):
 
 ```bash
+# Разместить документы в INGEST_DIR (или задать свою директорию в .env):
+cp /path/to/your/documents/* extract/new_docs/
+
 bash setup.sh --build-kg
 ```
 
-Скрипт загружает данные из `full.txt` в KuzuDB батчами по 1000 строк и строит векторные индексы ChromaDB. На полном датасете Wikidata (~2.9М квадруплетов) ожидайте несколько часов.
-
-Верификация после сборки:
+**Верификация после сборки:**
 ```bash
-python scripts/check_chroma_counts.py   # количество векторов
-python scripts/verify_ingestion.py       # состояние графа
-python scripts/qa_test_subset.py         # быстрый тест QA
+python scripts/check_chroma_counts.py   # количество векторов в ChromaDB
+python scripts/verify_ingestion.py      # состояние графа KuzuDB
+python scripts/qa_test_subset.py        # быстрый тест QA-конвейера
 ```
 
 ---
@@ -369,16 +352,21 @@ python scripts/qa_test_subset.py         # быстрый тест QA
 ### 7. Запуск бота
 
 ```bash
-# In-memory (без предварительной сборки БД):
-bash run_inmemory.sh
-
-# Production (KuzuDB + ChromaDB, после setup.sh --build-kg):
+# KuzuDB (production, после сборки):
 bash run_db.sh
+
+# In-memory (разработка, без предварительной сборки):
+bash run_inmemory.sh
 ```
 
-#### Автозапуск через systemd (Linux)
+Оба скрипта выводят цветной баннер устройства при запуске.
 
-`/etc/systemd/system/personal-ai-bot.service`:
+---
+
+### 8. Автозапуск через systemd (Linux)
+
+Создайте файл `/etc/systemd/system/personal-ai-bot.service`:
+
 ```ini
 [Unit]
 Description=Personal AI KG Bot
@@ -392,6 +380,8 @@ EnvironmentFile=/absolute/path/to/personal-ai/.env
 ExecStart=/absolute/path/to/personal-ai/.venv/bin/python bot.py
 Restart=on-failure
 RestartSec=10
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
@@ -401,84 +391,60 @@ WantedBy=multi-user.target
 sudo systemctl daemon-reload
 sudo systemctl enable personal-ai-bot
 sudo systemctl start personal-ai-bot
+
+# Просмотр логов в реальном времени:
 sudo journalctl -u personal-ai-bot -f
 ```
 
 ---
 
-## Интерфейс и интерпретация ответов
-
-После запуска бота в Telegram, вы можете взаимодействовать с ним через команды `/ask`, `/status` и другие. Ниже приведено описание того, как читать и интерпретировать ответы системы.
-
-### Команда `/ask`: Ответ на вопрос
-
-При отправке вопроса (например, `/ask Сколько активных корпоративных клиентов?`), бот возвращает ответ следующего вида:
-
-> **Ответ:** По состоянию на 2023 год у Сбера насчитывалось 3,2 миллиона активных корпоративных клиентов. [0.95]
-> 
-> _Топ-3 фактов:_
-> 1. [0.95] Сбербанк → active_corporate_clients → 3.2M (+2023-01-01)
-> 2. [0.42] Сбербанк → total_clients → 100M (+2023-01-01)
-> 3. [0.15] Сбербанк → employees → 200k (+2023-01-01)
-
-#### Как это читать:
-1. **Текст ответа**: Сгенерированный LLM текст на основе найденных фактов.
-2. **Confidence Score [0.95]**: Число в скобках после ответа — это оценка уверенности системы. 
-   - `> 0.7`: Высокая уверенность, ответ надежен.
-   - `0.4 - 0.7`: Средняя уверенность, стоит перепроверить факты ниже.
-   - `< 0.4`: Низкая уверенность, система могла "галлюцинировать" или не найти точных данных.
-3. **Топ-N фактов**: Список "сырых" данных из Графа Знаний, которые были переданы LLM для генерации ответа. Формат: `Субъект → Отношение → Объект (Время)`.
-
-### Команда `/status`: Мониторинг системы
-
-Позволяет проверить состояние всех компонентов. Пример вывода:
-
-> **Статус системы**
-> 
-> Mode: `production`
-> [OK] KuzuDB
-> [OK] ChromaDB
-> [OK] TComplEx
-> LLM: `deepseek`
-> **Device: `cuda`** (зеленый свет в логах)
-> Graph: 1.2M | 2.9M квадруплетов
-
-#### На что обратить внимание:
-- **Device**: Показывает, на чем работают нейросетевые компоненты (E5-embeddings и TComplEx).
-  - `cuda` / `mps` — **GPU ускорение активно**. Работа будет быстрой (зеленый цвет в консоли).
-  - `cpu` — **GPU не найден**. В консоли появится ⚠️ **КРАСНОЕ ПРЕДУПРЕЖДЕНИЕ**. Работа может быть значительно медленнее.
-
----
-
 ## Добавление новых фактов в граф знаний
 
-Система поддерживает 2 основных способа загрузки новых документов и фактов. В обоих случаях данные экстрактируются через LLM и атомарно записываются в графовую (Kuzu/Neo4j) и векторную (ChromaDB) базы с дедупликацией.
+Система поддерживает несколько способов загрузки новых документов и фактов. Во всех случаях данные экстрактируются через LLM и атомарно записываются в графовую (KuzuDB/Neo4j) и векторную (ChromaDB) базы с дедупликацией.
 
-### Способ 1: Через Telegram-бота (UI)
-Отправьте команду `/ingest` или просто перетащите документ (PDF/DOCX/PPTX/TXT) в окно чата. Бот асинхронно в фоне извлекает факты через LLM и добавляет их в граф, отправляя статус-сообщения.
+### Способ 1: Через Telegram-бота (интерактивно)
 
-### Способ 2: Через терминал (CLI-скрипты)
-Процесс разделен на два этапа для гибкости (парсинг и загрузка):
+Отправьте документ (PDF/DOCX/PPTX/TXT, до 20 MB) прямо в чат бота. Бот автоматически:
+1. Валидирует формат и размер файла
+2. Скачивает файл
+3. Запускает `DocIngestionService.ingest_single_file()` в фоновом потоке
+4. Отправляет пошаговые статус-сообщения в чат
+5. По завершении предлагает кнопку "Обновить модель" для переобучения TComplEx
 
-**Этап 1. Экстракция: Извлечение фактов из PDF/Текста**
-Срипт считывает папку с файлами и генерирует `facts.json` с помощью указанного в `.env` LLM-бэкенда.
+Этот способ подходит для добавления отдельных документов в реальном времени.
+
+### Способ 2: Пакетная загрузка через ingest_directory.py
+
+Лучший способ для загрузки большого количества документов. Подробно описан в разделе [Пакетная загрузка документов](#пакетная-загрузка-документов-ingest_directorypy).
+
 ```bash
-source .venv/bin/activate
-python extract/extract_quadruplets.py путь_к_папке_с_pdf --output new_facts.json
+python scripts/ingest_directory.py --dir /path/to/documents
 ```
 
-**Этап 2. Ингестия: Интеграция фактов в граф и векторную базу**
+### Способ 3: CLI через incremental_update.py
+
+Двухэтапный процесс для ручного контроля над каждым шагом.
+
+**Этап 1. Извлечение фактов из документов в JSON:**
+
 ```bash
-# Добавить извлеченные факты в граф и ChromaDB:
+python extract/extract_quadruplets.py /path/to/documents --output new_facts.json
+```
+
+**Этап 2. Загрузка в граф и ChromaDB:**
+
+```bash
+# Только добавить факты (без переобучения TComplEx):
 python scripts/incremental_update.py --input new_facts.json
 
-# Добавить факты + переобучить TComplEx (очередь scoring):
+# Добавить факты и переобучить TComplEx:
 python scripts/incremental_update.py \
     --input new_facts.json \
     --tkbc-dir wikidata_big/kg/tkbc_processed_data/wikidata_big/ \
-    --force-retrain --retrain-epochs 50
+    --force-retrain \
+    --retrain-epochs 50
 
-# Только проверить формат json (dry run, без записи):
+# Проверить формат JSON без записи (dry run):
 python scripts/incremental_update.py --input new_facts.json --dry-run
 ```
 
@@ -489,17 +455,12 @@ python scripts/incremental_update.py --input new_facts.json --dry-run
 | Граф (узлы/рёбра) | — | InMemoryGraph (до перезапуска) | KuzuDB (постоянно) | Neo4j (постоянно) |
 | ChromaDB векторы | — | /tmp (до перезапуска) | файловый (постоянно) | файловый (постоянно) |
 | TComplEx pickles | — | — | при `--tkbc-dir` | при `--tkbc-dir` |
-| Stash JSON | `/tmp/inmemory_stash.json` | — | — | — |
-
-**SimpleInMemoryEngine** (USE_INMEMORY=true + движок упал): факты сохраняются в stash-файл JSON и загружаются при следующем старте.
-
-**Full Engine + InMemoryGraphConnector** (USE_INMEMORY=true + движок поднялся): факты записываются в InMemoryGraph и ChromaDB в `/tmp`, но сбрасываются при перезапуске.
-
-**KuzuDB / Neo4j** (USE_INMEMORY=false): факты сохраняются постоянно.
+| Stash JSON | `INMEMORY_STASH_PATH` | — | — | — |
 
 ### Atomicity и восстановление после сбоя
 
 `incremental_update.py` реализует атомарный протокол для pickle-файлов TComplEx:
+
 1. **backup** — копирует `ent_id`, `rel_id`, `ts_id`, `train.pickle` → `.bak` файлы
 2. **ingest** — записывает данные в граф и ChromaDB
 3. При ошибке: **restore** — восстанавливает `.bak` обратно
@@ -507,29 +468,30 @@ python scripts/incremental_update.py --input new_facts.json --dry-run
 
 Это гарантирует консистентность: либо все компоненты обновлены, либо ни один.
 
-После ингестии перезапустите бота:
+После ингестии перезапустите бота (или используйте `/retrain` для hot-reload TComplEx без перезапуска):
+
 ```bash
 sudo systemctl restart personal-ai-bot   # systemd
-# или Ctrl+C, затем python bot.py
+# или: Ctrl+C → bash run_db.sh
 ```
 
 ---
 
 ## Пакетная загрузка документов (`ingest_directory.py`)
 
-Скрипт принимает директорию, параллельно обрабатывает все файлы (PDF/DOCX/PPTX/TXT),
-добавляет извлечённые факты в KuzuDB + ChromaDB и запускает переобучение TComplEx.
+Скрипт принимает директорию, параллельно обрабатывает все файлы (PDF/DOCX/PPTX/TXT), добавляет извлечённые факты в KuzuDB + ChromaDB и запускает переобучение TComplEx.
 
 ### Запуск
 
 ```bash
 source .venv/bin/activate
+
 python scripts/ingest_directory.py \
     --dir /path/to/documents \
     --tkbc-dir wikidata_big/kg/tkbc_processed_data/wikidata_big/
 ```
 
-Или коротко (если `TCOMPLEX_DATA_PATH` задан в `.env`):
+Если `TCOMPLEX_DATA_PATH` задан в `.env`, аргумент `--tkbc-dir` можно опустить:
 
 ```bash
 python scripts/ingest_directory.py --dir /path/to/documents
@@ -539,9 +501,9 @@ python scripts/ingest_directory.py --dir /path/to/documents
 
 | Параметр | По умолчанию | Описание |
 |---|---|---|
-| `--dir` | **обязательный** | Директория с документами |
-| `--tkbc-dir` | `$TCOMPLEX_DATA_PATH` | Путь к TKBC pickle-файлам для TComplEx |
-| `--workers` | `min(32, cpu×4)` | Потоков для параллельной обработки файлов |
+| `--dir` | **обязательный** | Директория с документами (сканируется рекурсивно) |
+| `--tkbc-dir` | `$TCOMPLEX_DATA_PATH` | Путь к TComplEx pickle-файлам |
+| `--workers` | `min(32, cpu×4)` | Потоков для параллельной LLM-экстракции |
 | `--epochs` | `50` | Эпох для переобучения TComplEx |
 | `--lr` | `1e-3` | Learning rate |
 | `--skip-retrain` | выкл | Пропустить переобучение TComplEx |
@@ -553,23 +515,23 @@ python scripts/ingest_directory.py --dir /path/to/documents
 В начале скрипт определяет доступное устройство и выводит цветной баннер:
 
 - **Зелёный `[GPU]`** — CUDA GPU найден, используется аппаратное ускорение
-- **Красный `[CPU]`** — GPU не обнаружен, работа на процессоре (медленно)
+- **Красный `[CPU]`** — GPU не обнаружен, работа на процессоре
 
-Настройки автоматически выбираются по объёму VRAM:
+Параметры подбираются автоматически по объёму VRAM:
 
-| Тир | GPU | VRAM | Embed batch | AMP |
-|---|---|---|---|---|
-| `ultra` | A100 80 GB, H100 | ≥ 70 GB | 1024 | BF16 |
-| `high` | A100 40 GB, A6000 | ≥ 36 GB | 512 | BF16 |
-| `mid` | A30, A10G | ≥ 20 GB | 256 | BF16 |
-| `low` | A4, T4, RTX 3070 | ≥ 8 GB | 128 | FP16 |
-| `cpu` | — | — | 64 | — |
+| Тир | GPU | VRAM | Embed batch | AMP | torch.compile |
+|---|---|---|---|---|---|
+| `ultra` | A100 80 GB, H100 | >= 70 GB | 1024 | BF16 | Да |
+| `high` | A100 40 GB, A6000 | >= 36 GB | 512 | BF16 | Да |
+| `mid` | A30, A10G | >= 20 GB | 256 | BF16 | — |
+| `low` | A4, T4, RTX 3070 | >= 8 GB | 128 | FP16 | — |
+| `cpu` | — | — | 64 | — | — |
 
-При нескольких GPU DataParallel включается автоматически. BF16 AMP (поддерживается на A100/H100/A30) значительно ускоряет переобучение TComplEx. FP16 используется на старших картах Ampere/Turing.
+При нескольких GPU DataParallel включается автоматически. BF16 AMP (A100/H100/A30) значительно ускоряет переобучение TComplEx.
 
 ### Поведение при невалидных файлах
 
-Файлы с неподдерживаемым расширением (`.xlsx`, `.json`, и т.д.) пропускаются с предупреждением — обработка остальных продолжается. Уже обработанные файлы пропускаются автоматически (кеш в `extract_data/processed_files.json`).
+Файлы с неподдерживаемым расширением (`.xlsx`, `.json`, `.html` и т.д.) пропускаются с предупреждением — обработка остальных продолжается. Уже обработанные файлы пропускаются автоматически (кеш в `extract_data/processed_files.json`). Для принудительной повторной обработки используйте `--reprocess`.
 
 ### Пример вывода
 
@@ -577,8 +539,8 @@ python scripts/ingest_directory.py --dir /path/to/documents
 ====  ingest_directory.py  ====
 
 ══════════════════════════════════════════════════════════
-  [GPU]  NVIDIA A100-SXM4-80GB  80.0 GB VRAM
-        tier=ultra  AMP=bf16  embed_batch=1024
+  [GPU]  NVIDIA A100-SXM4-80GB  80 GB VRAM
+         tier=ultra  AMP=bf16  embed_batch=1024
 ══════════════════════════════════════════════════════════
 
   Found 12 supported file(s)  (skipped 2 unsupported)
@@ -587,7 +549,6 @@ python scripts/ingest_directory.py --dir /path/to/documents
 [1/3] Extracting facts from 12 file(s)  (workers=32)
   [OK]  report_2023.pdf  →  47 facts
   [OK]  strategy.docx   →  23 facts
-  ...
   [OK]  Extracted 312 total facts in 42s
 
 [2/3] Writing 312 facts → KuzuDB + ChromaDB
@@ -602,59 +563,45 @@ python scripts/ingest_directory.py --dir /path/to/documents
 
 ## TComplEx: переобучение
 
-TComplEx — темпоральный скорер, присваивающий логиты квадруплетам. Переобучение нужно после значительного пополнения базы знаний, чтобы новые сущности корректно ранжировались на стадии Scoring.
+TComplEx — темпоральный скорер, присваивающий логиты квадруплетам `(s, r, o, t)`. Переобучение требуется после значительного пополнения базы знаний, чтобы новые сущности корректно ранжировались на стадии 5.
 
 ### Когда нужно переобучать
 
-- Добавлено >1000 новых сущностей или отношений
+- Добавлено более 1000 новых сущностей или отношений
 - Заметное снижение качества ответов на темпоральные вопросы
-- После импорта нового датасета
-
-### Файлы данных TComplEx
-
-| Файл | Тип | Описание |
-|---|---|---|
-| `ent_id` | `dict[str, int]` | entity_id → числовой индекс |
-| `rel_id` | `dict[str, int]` | relation_id → числовой индекс |
-| `ts_id` | `dict[str, int]` | timestamp → числовой индекс |
-| `train.pickle` | `list[tuple]` | (s, r, o, ts, te) числовые индексы |
-
-### Формат checkpoint (.ckpt)
-
-Файл `tcomplex.ckpt` — PyTorch state_dict тензорной модели TComplEx. Загружается через `TemporalScorer(checkpoint_path=...)`.
+- После импорта нового датасета документов
 
 ### Команда переобучения
 
 ```bash
 source .venv/bin/activate
 
-# Результат сохраняется туда же, куда смотрит TCOMPLEX_CHECKPOINT из .env:
+# Результат сохраняется по TCOMPLEX_CHECKPOINT из .env:
 python scripts/retrain_tcomplex.py \
     --tkbc-dir wikidata_big/kg/tkbc_processed_data/wikidata_big/ \
     --epochs 50 \
-    --batch-size 1000 \
     --lr 1e-3
 
-# Явно указать путь для сохранения:
+# Явно указать путь для сохранения чекпоинта:
 python scripts/retrain_tcomplex.py \
     --tkbc-dir wikidata_big/kg/tkbc_processed_data/wikidata_big/ \
     --checkpoint-out models/cronkgqa/tcomplex_v2.ckpt \
     --epochs 50
 ```
 
-Приоритет `--checkpoint-out`:
+Приоритет пути для сохранения:
 1. `--checkpoint-out` (явный аргумент)
 2. `TCOMPLEX_CHECKPOINT` из `.env`
 3. `models/cronkgqa/tcomplex.ckpt` (дефолт)
 
-Что происходит:
-1. Загружается существующий чекпоинт (`TCOMPLEX_CHECKPOINT` или `tcomplex.ckpt` в tkbc-dir)
-2. Модель дообучается на обновлённом `train.pickle` (warm start)
-3. Новый чекпоинт сохраняется по приоритету выше
+Что происходит при переобучении:
+1. Загружается существующий чекпоинт (warm start — не с нуля)
+2. Модель дообучается на обновлённом `train.pickle`
+3. Новый чекпоинт сохраняется
 
 ### Hot-reload через /retrain
 
-В Telegram-боте команда `/retrain` запускает переобучение без перезапуска процесса.
+В Telegram-боте команда `/retrain` запускает переобучение без остановки бота. Бот продолжает отвечать на вопросы во время переобучения и переключается на новую модель по завершении.
 
 ### Автоматический retrain через incremental_update.py
 
@@ -666,6 +613,59 @@ python scripts/incremental_update.py \
     --retrain-epochs 50
 ```
 
+### Файлы данных TComplEx
+
+| Файл | Тип | Описание |
+|---|---|---|
+| `ent_id` | `dict[str, int]` | entity_id → числовой индекс |
+| `rel_id` | `dict[str, int]` | relation_id → числовой индекс |
+| `ts_id` | `dict[tuple, int]` | timestamp (y,m,d) → числовой индекс |
+| `train.pickle` | `list[tuple]` | (s, r, o, ts, te) числовые индексы |
+
+Чекпоинт `tcomplex.ckpt` — PyTorch state_dict. Загружается через `TemporalScorer(checkpoint_path=...)`. Rank определяется автоматически из формы весов при загрузке.
+
+---
+
+## Интерфейс и интерпретация ответов
+
+### Команда `/ask`: Ответ на вопрос
+
+При отправке вопроса (например, `/ask Сколько активных корпоративных клиентов?`) бот возвращает:
+
+> **Ответ:** По состоянию на 2023 год у Сбера насчитывалось 3,2 миллиона активных корпоративных клиентов. [0.95]
+>
+> _Топ-3 фактов:_
+> 1. [0.95] Сбербанк → active_corporate_clients → 3.2M (+2023-01-01)
+> 2. [0.42] Сбербанк → total_clients → 100M (+2023-01-01)
+> 3. [0.15] Сбербанк → employees → 200k (+2023-01-01)
+
+#### Интерпретация полей:
+
+**Confidence Score `[0.95]`** — совокупная оценка уверенности системы:
+- `> 0.7` — высокая уверенность, ответ надёжен
+- `0.4–0.7` — средняя уверенность, рекомендуется проверить факты ниже
+- `< 0.4` — низкая уверенность, данные могут отсутствовать в графе
+
+**Топ-N фактов** — список "сырых" квадруплетов из графа, переданных LLM для генерации ответа. Формат: `Субъект → Отношение → Объект (+временная_метка)`.
+
+### Команда `/status`: Мониторинг системы
+
+```
+Статус системы
+
+Mode: production
+[OK] KuzuDB
+[OK] ChromaDB
+[OK] TComplEx
+LLM: deepseek
+Device: cuda
+Graph: 1.2M nodes | 2.9M quadruplets
+```
+
+**Поле Device:**
+- `cuda` / `mps` — GPU-ускорение активно (зелёный цвет в консоли)
+- `cpu` — GPU не найден (красный баннер при запуске, медленнее)
+
 ---
 
 ## Команды Telegram-бота
@@ -676,13 +676,14 @@ python scripts/incremental_update.py \
 | `/help` | Полная справка по командам |
 | `/ask <вопрос>` | Полный 7-стадийный QA-конвейер |
 | `/facts <вопрос>` | Отладочная трассировка: факты, E5-сходства, TComplEx-логиты |
-| `/dbg <вопрос>` | Расширенная отладка с промптами |
-| `/graph <сущность>` | PNG-визуализация 1-hop подграфа |
+| `/dbg <вопрос>` | Расширенная отладка с промптами LLM |
+| `/graph <сущность>` | PNG-визуализация 1-hop подграфа сущности |
 | `/settings` | Текущие гиперпараметры: `top_k`, `confidence_gap` |
 | `/set <param> <val>` | Изменить параметр сессии, например `/set top_k 15` |
 | `/status` | Режим работы, число квадруплетов, LLM-бэкенд, устройство |
 | `/ingest` | Загрузить документ (PDF/DOCX/PPTX/TXT) и добавить факты в граф |
 | `/retrain` | Переобучить TComplEx (требует настроенного `TCOMPLEX_DATA_PATH`) |
+| `/clear` | Очистить граф знаний (необратимо, требует подтверждения) |
 
 ---
 
@@ -694,8 +695,8 @@ personal-ai/
 ├── bot.py                                  # Точка входа — Telegram-бот (aiogram)
 │
 ├── scripts/
-│   ├── build_kg.py                         # Первичная сборка KG (вызывается setup.sh)
 │   ├── ingest_directory.py                 # Пакетная загрузка документов + retrain
+│   ├── build_kg.py                         # Первичная сборка KG из full.txt
 │   ├── incremental_update.py               # Атомарное добавление новых фактов
 │   ├── retrain_tcomplex.py                 # Переобучение темпорального скорера
 │   ├── verify_ingestion.py                 # Проверка состояния графа
@@ -703,6 +704,9 @@ personal-ai/
 │   ├── qa_test_subset.py                   # Быстрое тестирование QA
 │   ├── merge_out_json.py                   # Объединение выгрузок
 │   └── inspect_chroma.py                   # Инспекция ChromaDB
+│
+├── extract/
+│   └── extract_quadruplets.py              # CLI извлечения фактов из документов
 │
 ├── src/
 │   ├── config/
@@ -720,7 +724,7 @@ personal-ai/
 │   │   └── ingestion/
 │   │       ├── temporal_kg_ingester.py     # TemporalKGIngester
 │   │       ├── entity_resolver.py          # EntityResolver (5 уровней)
-│   │       └── doc_ingestion_service.py    # Ингестия документов через бот
+│   │       └── doc_ingestion_service.py    # Ингестия документов через бота
 │   │
 │   ├── kg_model/
 │   │   ├── knowledge_graph_model.py        # KnowledgeGraphModel — контроллер БД
@@ -759,31 +763,29 @@ personal-ai/
 │       ├── kg_navigator.py                 # KGNavigator (для /graph)
 │       └── device_utils.py                 # CPU/MPS/CUDA detection
 │
-├── models/                                 # Не в git — создать вручную
-│   ├── wikidata_finetuned_remote/
-│   │   └── wikidata_finetuned/             # E5-small finetuned
+├── models/                                 # Не в git — создаётся setup.sh
+│   ├── e5/                                 # E5-small (скачивается setup.sh автоматически)
 │   └── cronkgqa/
-│       └── tcomplex.ckpt
+│       └── tcomplex.ckpt                   # TComplEx checkpoint
 │
 ├── data/                                   # Создаётся автоматически
-│   ├── kuzu_db/
+│   ├── kuzu_db/                            # KuzuDB файлы
 │   └── graph_structures/
-│       ├── vectorized_nodes/default/
-│       └── vectorized_quadruplets/default/
+│       ├── vectorized_nodes/default/       # ChromaDB: узлы
+│       └── vectorized_quadruplets/default/ # ChromaDB: квадруплеты
 │
-├── wikidata_big/kg/                        # Не в git — разместить вручную
-│   ├── full.txt
-│   ├── wd_id2entity_text.txt
-│   ├── wd_id2relation_text.txt
-│   └── tkbc_processed_data/wikidata_big/
+├── wikidata_big/kg/                        # Не в git — разместить вручную (опционально)
+│   ├── full.txt                            # Датасет квадруплетов (TSV)
+│   ├── wd_id2entity_text.txt               # ID → метка сущности
+│   ├── wd_id2relation_text.txt             # ID → метка отношения
+│   └── tkbc_processed_data/wikidata_big/   # TComplEx pickle-файлы
 │       ├── train.pickle
 │       ├── ent_id
 │       ├── rel_id
 │       └── ts_id
 │
-├── docs/
-│   └── deployment_bare_metal.md            # Детальный гайд по развёртыванию
-│
+├── extract/new_docs/                       # Директория для новых документов
+├── extract_data/                           # Кеш реестра ID и обработанных файлов
 ├── setup.sh                                # Первичная настройка окружения
 ├── run_db.sh                               # Запуск в режиме KuzuDB/Neo4j
 ├── run_inmemory.sh                         # Запуск в in-memory режиме
@@ -804,6 +806,7 @@ personal-ai/
 | [`GenerationStage`](src/pipelines/qa/stages/generation.py) | `stages/generation.py` | LLM-генерация финального ответа |
 | [`EntityResolver`](src/pipelines/ingestion/entity_resolver.py) | `ingestion/entity_resolver.py` | 5-уровневое разрешение сущностей |
 | [`TemporalKGIngester`](src/pipelines/ingestion/temporal_kg_ingester.py) | `ingestion/temporal_kg_ingester.py` | Загрузка квадруплетов в граф и ChromaDB |
+| [`DocIngestionService`](src/pipelines/ingestion/doc_ingestion_service.py) | `ingestion/doc_ingestion_service.py` | Ингестия документов: чтение → LLM → запись |
 | [`KnowledgeGraphModel`](src/kg_model/knowledge_graph_model.py) | `kg_model/knowledge_graph_model.py` | Единый контроллер KuzuDB + ChromaDB |
 | [`QAConfig`](src/config/qa_config.py) | `src/config/qa_config.py` | Все гиперпараметры конвейера |
 | [`load_engine`](src/bot/engine_loader.py) | `bot/engine_loader.py` | Singleton-фабрика: выбор режима работы |
@@ -817,36 +820,52 @@ personal-ai/
 ### Бот не запускается: `TELEGRAM_BOT_TOKEN` not set
 
 ```bash
-# Проверить, что .env существует и содержит токен:
+# Проверить наличие .env и токена:
 grep TELEGRAM_BOT_TOKEN .env
+# Если пусто — откройте .env и заполните токен от @BotFather
 ```
 
 ### Ошибка `ModuleNotFoundError: No module named 'kuzu'`
 
-KuzuDB не установлен или версия Python не 3.10:
+KuzuDB не установлен или используется неправильная версия Python:
+
 ```bash
 python --version   # должно быть 3.10.x
 pip install kuzu
 ```
 
-### Ошибка `AttributeError: 'QAConfig' object has no attribute 'chroma_host'`
-
-Используется устаревший `incremental_update.py`. Обновите до текущей версии из репозитория.
-
 ### ChromaDB пустой после сборки
 
 ```bash
 python scripts/check_chroma_counts.py
-# Если 0 — перезапустите: bash setup.sh --build-kg
+# Если 0 — повторите сборку:
+python scripts/ingest_directory.py --dir /path/to/documents --reprocess
 ```
 
 ### TComplEx не загружается: `No such file or directory: 'models/cronkgqa/tcomplex.ckpt'`
 
-Файл чекпоинта не размещён. Система продолжит работу на 6 стадиях (без TComplEx-скоринга). Для полного функционала разместите чекпоинт или обучите через `kaggle_job/`.
+Файл чекпоинта отсутствует. Система продолжит работу на 6 стадиях (без TComplEx-скоринга). Для полного функционала:
+- Разместите готовый чекпоинт в `models/cronkgqa/tcomplex.ckpt`
+- Или запустите `ingest_directory.py` — он создаст начальный чекпоинт после загрузки данных
+
+### Ошибка `FileNotFoundError: Mapping file not found: .../ent_id`
+
+Pickle-файлы TComplEx отсутствуют по пути `TCOMPLEX_DATA_PATH`. Проверьте переменную в `.env`:
+
+```bash
+grep TCOMPLEX_DATA_PATH .env
+# Убедитесь, что директория существует и содержит ent_id, rel_id, ts_id, train.pickle
+ls $TCOMPLEX_DATA_PATH
+```
 
 ### Бот зависает при большом `full.txt` в in-memory режиме
 
-SimpleInMemoryEngine загружает все квадруплеты в RAM + строит numpy-эмбеддинги. На 2.9М строк — требуется ~16GB RAM и несколько минут. Используйте режим KuzuDB (`USE_INMEMORY=false`).
+`SimpleInMemoryEngine` загружает все квадруплеты в RAM и строит numpy-эмбеддинги. На 2.9M строк — ~16 GB RAM и несколько минут. Решение: переключитесь на KuzuDB:
+
+```ini
+USE_INMEMORY=false
+GRAPH_BACKEND=kuzu
+```
 
 ### Ошибка Neo4j: `ServiceUnavailable`
 
@@ -856,4 +875,46 @@ curl http://localhost:7474
 
 # Или переключиться на KuzuDB:
 echo "GRAPH_BACKEND=kuzu" >> .env
+```
+
+### ingest_directory.py: `No supported files found`
+
+```bash
+# Проверить расширения файлов:
+ls /path/to/documents
+
+# Поддерживаются только: .pdf .docx .pptx .txt
+# Переименуйте или сконвертируйте файлы в поддерживаемый формат
+```
+
+### Низкая скорость извлечения (LLM API throttling)
+
+Если скорость упирается в лимиты LLM API, уменьшите количество воркеров:
+
+```bash
+python scripts/ingest_directory.py --dir /path/to/docs --workers 4
+```
+
+### Красный `[CPU]` при запуске вместо зелёного `[GPU]`
+
+CUDA недоступна. Проверьте:
+
+```bash
+# Проверить наличие CUDA:
+python -c "import torch; print(torch.cuda.is_available())"
+
+# Если False — переустановите PyTorch с CUDA-поддержкой:
+pip install torch --index-url https://download.pytorch.org/whl/cu121
+
+# Проверить версию CUDA на машине:
+nvidia-smi
+```
+
+### Ошибка `AttributeError: 'QAConfig' object has no attribute 'chroma_host'`
+
+Используется устаревший `incremental_update.py`. Обновитесь до текущей версии из репозитория:
+
+```bash
+git pull origin main
+pip install -r requirements.txt
 ```

@@ -17,7 +17,7 @@ ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 MODEL_PATH = (
     os.environ.get('FINETUNED_MODEL_PATH')
     or os.environ.get('MODEL_PATH')
-    or os.path.join(ROOT_DIR, 'models/wikidata_finetuned_remote/wikidata_finetuned')
+    or os.path.join(ROOT_DIR, 'models/e5')
 )
 
 _engine = None
@@ -286,10 +286,33 @@ class SimpleInMemoryEngine:
         return output
 
     def ask_full(self, question: str, top_k: int = 10, debug: bool = False):
-        """Single-pass: returns (answer, ranked_results) to avoid double pipeline execution."""
+        """Single-pass: returns (answer, ranked_results) without running retrieve_with_scores twice."""
         ranked = self.get_ranked_results(question, top_k)
-        answer = self.ask(question, top_k, debug)
-        return answer, ranked
+        if not ranked:
+            return "Релевантные факты не найдены в базе знаний.", ranked
+        if not self.llm:
+            return "LLM не инициализирован.", ranked
+        SEP = '=' * 60
+        if debug:
+            print(f'\n{SEP}\n[SimpleInMemoryEngine] QUESTION: {question}\n{SEP}')
+            print(f'[1/2] Top-{len(ranked)} facts:')
+            for r in ranked:
+                print(f"  [{r['confidence']:.3f}] {r['text']}")
+            print(f'[2/2] Calling LLM ({type(self.llm).__name__})...')
+        facts_str = "\n".join(f"- {r['text']}" for r in ranked)
+        prompt = (
+            "You are a knowledge graph QA assistant. "
+            "Answer the question using ONLY the facts below.\n\n"
+            f"FACTS:\n{facts_str}\n\nQUESTION: {question}\n\nANSWER:"
+        )
+        try:
+            answer = self.llm.generate(prompt)
+            if debug:
+                print(f'\n{SEP}\n>>> ANSWER: {answer}\n{SEP}\n')
+            return answer, ranked
+        except Exception as e:
+            logger.error(f"LLM error: {e}")
+            return f"Ошибка LLM: {e}", ranked
 
     def get_neighborhood(self, entity_name: str, limit: int = 20) -> List[str]:
         name_lower = entity_name.lower()

@@ -31,7 +31,7 @@ if [[ "$AVAIL_KB" -lt 5242880 ]]; then
 fi
 
 KG_DIR="${KG_DATA_PATH:-/app/data/wikidata_big/kg}"
-MODEL_DIR="${FINETUNED_MODEL_PATH:-/app/data/models/wikidata_finetuned_remote/wikidata_finetuned}"
+MODEL_DIR="${FINETUNED_MODEL_PATH:-/app/data/models/e5}"
 TCOMPLEX_CKPT="${TCOMPLEX_CHECKPOINT:-/app/data/models/cronkgqa/tcomplex.ckpt}"
 KUZU_DIR="${KUZU_PATH:-/app/data/kuzu_db}"
 

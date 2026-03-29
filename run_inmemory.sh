@@ -81,7 +81,7 @@ elif [[ "$FREE_RAM_MB" -gt 0 ]]; then
 fi
 
 # 6. E5 model (optional — falls back to HuggingFace download)
-E5_PATH="${FINETUNED_MODEL_PATH:-models/wikidata_finetuned_remote/wikidata_finetuned}"
+E5_PATH="${FINETUNED_MODEL_PATH:-models/e5}"
 if [[ -f "$E5_PATH/config.json" ]]; then
     ok "E5 model: $E5_PATH"
 else

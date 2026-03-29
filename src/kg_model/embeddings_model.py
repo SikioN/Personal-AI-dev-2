@@ -132,7 +132,7 @@ class EmbeddingsModel:
         for i, quadruplet in enumerate(quadruplets):
             cur_info = delete_info.get(i, None)
 
-            if (cur_info is None) or cur_info['triplet']:
+            if (cur_info is None) or cur_info.get('quadruplet', False):
                 unique_relation_ids.add(quadruplet.relation.id)
 
             if (cur_info is None) or cur_info['s_node']:

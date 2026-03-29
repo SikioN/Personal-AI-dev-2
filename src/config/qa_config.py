@@ -45,7 +45,7 @@ class QAConfig:
     neo4j_host: str = 'localhost'
     neo4j_port: int = 7687
     neo4j_user: str = 'neo4j'
-    neo4j_password: str = 'password'
+    neo4j_password: str = ''
     neo4j_db: str = 'neo4j'
 
     # ChromaDB (external vector store)
@@ -59,7 +59,7 @@ class QAConfig:
 
     # Model paths
     finetuned_model_path: str = field(default_factory=lambda: os.environ.get(
-        "FINETUNED_MODEL_PATH", "models/wikidata_finetuned_remote/wikidata_finetuned"))
+        "FINETUNED_MODEL_PATH", "models/e5"))
     tcomplex_checkpoint: str = field(default_factory=lambda: os.environ.get(
         "TCOMPLEX_CHECKPOINT", "models/cronkgqa/tcomplex.ckpt"))
     tcomplex_data_path: str = field(default_factory=lambda: os.environ.get(
@@ -100,4 +100,7 @@ class QAConfig:
             cfg.tcomplex_data_path = os.environ['TCOMPLEX_DATA_PATH']
         if os.environ.get('TCOMPLEX_ALPHA'):
             cfg.tcomplex_alpha = float(os.environ['TCOMPLEX_ALPHA'])
+        if not cfg.neo4j_password:
+            import warnings
+            warnings.warn("NEO4J_PASSWORD is not set. Set it via environment variable.", stacklevel=2)
         return cfg

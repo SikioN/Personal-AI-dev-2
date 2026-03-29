@@ -191,16 +191,18 @@ else
     warn "Place your KG data there or set KG_DATA_PATH in .env"
 fi
 
-# ── 7. E5 model check ─────────────────────────────────────────────────────────
+# ── 7. E5 model ───────────────────────────────────────────────────────────────
 echo -e "\n${BOLD}[7] E5 embedder model${NC}"
-E5_PATH="${FINETUNED_MODEL_PATH:-models/wikidata_finetuned_remote/wikidata_finetuned}"
+E5_PATH="${FINETUNED_MODEL_PATH:-models/e5}"
 if [[ -f "$E5_PATH/config.json" ]]; then
     ok "E5 model found: $E5_PATH"
 else
-    warn "E5 model not found at: $E5_PATH"
-    info "Download with:"
-    echo "    source .venv/bin/activate"
-    echo "    python -c \"from sentence_transformers import SentenceTransformer; SentenceTransformer('intfloat/multilingual-e5-small').save('$E5_PATH')\""
+    info "E5 model not found — downloading intfloat/multilingual-e5-small ..."
+    mkdir -p "$E5_PATH"
+    "$VENV_PYTHON" -c "
+from sentence_transformers import SentenceTransformer
+SentenceTransformer('intfloat/multilingual-e5-small').save('$E5_PATH')
+" && ok "E5 model saved to $E5_PATH" || { err "E5 download failed"; exit 1; }
 fi
 
 # ── 8. TComplEx check ─────────────────────────────────────────────────────────
@@ -293,7 +295,8 @@ echo ""
 echo -e "${BOLD}Next steps:${NC}"
 echo -e "  1. Fill in ${BOLD}.env${NC}  (TELEGRAM_BOT_TOKEN + LLM credentials)"
 echo -e "  2a. Quick test : ${CYAN}bash run_inmemory.sh${NC}"
-echo -e "  2b. Production : ${CYAN}bash setup.sh --build-kg${NC}  then  ${CYAN}bash run_db.sh${NC}"
+echo -e "  2b. Production : ${CYAN}cp /path/to/docs/* extract/new_docs/${NC}"
+echo -e "                   ${CYAN}bash setup.sh --build-kg${NC}  then  ${CYAN}bash run_db.sh${NC}"
 echo ""
 echo -e "${BOLD}════════════════════════════════════════════════════════${NC}"
 echo ""

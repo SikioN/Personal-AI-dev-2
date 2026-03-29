@@ -142,11 +142,9 @@ class ChromaConnection(AbstractVectorDatabaseConnection):
         collection_size = self.count_items()
         n_results = collection_size if collection_size < n_results else n_results
         if n_results < 1:
-            return [[]*len(query_instances)]
+            return [[] for _ in range(len(query_instances))]
 
         filtering_expr = dict()
-        if subset_ids is not None:
-            filtering_expr['ids'] = subset_ids
 
         # Attention: в случае использования ip-метрики будут получены значения расстояний [distances] между векторами,
         # а не значения их семантической блозости [similarity]
