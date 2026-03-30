@@ -291,7 +291,10 @@ $TCOMPLEX_OK \
     && echo -e "  TComplEx  : ${GREEN}OK${NC}" \
     || echo -e "  TComplEx  : ${YELLOW}optional — not found${NC}"
 KUZU_DIR="${KUZU_PATH:-data/kuzu_db}"
-[[ -d "$KUZU_DIR" && -n "$(ls -A "$KUZU_DIR" 2>/dev/null)" ]] \
+# KUZU_PATH may point to a file (e.g. data/kuzu_db/graph.db) or a directory — check both
+KUZU_CHECK_DIR="$KUZU_DIR"
+[[ ! -d "$KUZU_CHECK_DIR" ]] && KUZU_CHECK_DIR="$(dirname "$KUZU_DIR")"
+[[ -d "$KUZU_CHECK_DIR" && -n "$(ls -A "$KUZU_CHECK_DIR" 2>/dev/null)" ]] \
     && echo -e "  KuzuDB    : ${GREEN}built${NC}" \
     || echo -e "  KuzuDB    : ${YELLOW}not built — run: bash setup.sh --build-kg${NC}"
 echo ""
