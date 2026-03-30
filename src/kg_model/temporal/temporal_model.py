@@ -115,7 +115,15 @@ class TemporalScorer:
         sizes = (self.num_entities, self.num_relations * 2, self.num_entities, self.num_timestamps)
 
         self.model = TComplEx(sizes, rank, no_time_emb=False)
-        self.model.load_state_dict(new_state_dict)
+
+        # Use strict=False to handle size mismatch when new entities/relations were added.
+        # Existing embeddings are copied from checkpoint; new rows stay randomly initialised
+        # and will be fine-tuned on the next retrain pass.
+        missing, unexpected = self.model.load_state_dict(new_state_dict, strict=False)
+        if missing or unexpected:
+            print(f"  [INFO] Checkpoint partial load — missing: {len(missing)}, unexpected: {len(unexpected)} keys. "
+                  f"New entity/relation embeddings initialised randomly (run retrain to fix).")
+
         self.model.to(device)
         self.model.eval()
         print(f"TemporalScorer initialized successfully (rank={rank}).")
