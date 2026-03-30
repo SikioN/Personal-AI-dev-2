@@ -246,15 +246,19 @@ if $BUILD_KG; then
         KUZU_DEL="${KUZU_PATH:-data/kuzu_db}"
         NODES_DEL="${CHROMA_NODES_PATH:-data/graph_structures/vectorized_nodes/default}"
         QUADS_DEL="${CHROMA_QUADS_PATH:-data/graph_structures/vectorized_quadruplets/default}"
-        # Use Python shutil.rmtree — more reliable than rm -rf for ChromaDB nested UUID dirs
+        # Use Python shutil.rmtree — more reliable than rm -rf for ChromaDB nested UUID dirs.
+        # ignore_errors=True skips NFS .nfsXXXX busy temp files (auto-cleaned by NFS later).
         "$VENV_PYTHON" - <<PYEOF
 import shutil, os
 for p in [r"$KUZU_DEL", r"$NODES_DEL", r"$QUADS_DEL"]:
     if os.path.exists(p):
         if os.path.isdir(p):
-            shutil.rmtree(p)
+            shutil.rmtree(p, ignore_errors=True)
         else:
-            os.remove(p)
+            try:
+                os.remove(p)
+            except OSError:
+                pass
         print(f"  [--]  Удалено: {p}")
 PYEOF
         ok "--clean выполнен"
