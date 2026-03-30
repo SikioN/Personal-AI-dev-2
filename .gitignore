@@ -181,6 +181,5 @@ src/pipelines/qa/benchmark.py
 src/pipelines/qa/configs.py
 src/utils/cache_kv.py
 src/utils/graph_loader.py
-src/db_drivers/utils.py
 extract_data/*
 !extract_data/wikidata_properties_cache.json
