@@ -116,13 +116,27 @@ class TemporalScorer:
 
         self.model = TComplEx(sizes, rank, no_time_emb=False)
 
-        # Use strict=False to handle size mismatch when new entities/relations were added.
-        # Existing embeddings are copied from checkpoint; new rows stay randomly initialised
-        # and will be fine-tuned on the next retrain pass.
-        missing, unexpected = self.model.load_state_dict(new_state_dict, strict=False)
-        if missing or unexpected:
-            print(f"  [INFO] Checkpoint partial load — missing: {len(missing)}, unexpected: {len(unexpected)} keys. "
-                  f"New entity/relation embeddings initialised randomly (run retrain to fix).")
+        # Copy weights from checkpoint, handling size mismatch when new entities/relations
+        # were added after ingestion. For each embedding tensor, copy the rows that exist
+        # in the checkpoint; new rows stay randomly initialised and are fine-tuned on retrain.
+        model_state = self.model.state_dict()
+        size_mismatch = False
+        for key, ckpt_tensor in new_state_dict.items():
+            if key not in model_state:
+                continue
+            model_tensor = model_state[key]
+            if model_tensor.shape == ckpt_tensor.shape:
+                model_state[key] = ckpt_tensor
+            else:
+                size_mismatch = True
+                # Copy along each dim up to the min size
+                slices = tuple(slice(0, min(s, c)) for s, c in zip(model_tensor.shape, ckpt_tensor.shape))
+                model_tensor[slices].copy_(ckpt_tensor[slices])
+                model_state[key] = model_tensor
+        self.model.load_state_dict(model_state, strict=True)
+        if size_mismatch:
+            print(f"  [INFO] Checkpoint size mismatch — old embeddings copied, "
+                  f"new entity/relation rows initialised randomly. Run retrain to update them.")
 
         self.model.to(device)
         self.model.eval()
