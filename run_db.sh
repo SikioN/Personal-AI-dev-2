@@ -70,7 +70,10 @@ ok "E5 model: $E5_PATH"
 
 # 6. KuzuDB populated
 KUZU_PATH="${KUZU_PATH:-data/kuzu_db}"
-if [[ ! -d "$KUZU_PATH" ]] || [[ -z "$(ls -A "$KUZU_PATH" 2>/dev/null)" ]]; then
+# KUZU_PATH may point to a file (e.g. data/kuzu_db/graph.db) or a directory — check both
+KUZU_CHECK_DIR="$KUZU_PATH"
+[[ ! -d "$KUZU_CHECK_DIR" ]] && KUZU_CHECK_DIR="$(dirname "$KUZU_PATH")"
+if [[ ! -d "$KUZU_CHECK_DIR" ]] || [[ -z "$(ls -A "$KUZU_CHECK_DIR" 2>/dev/null)" ]]; then
     err "KuzuDB not built at: $KUZU_PATH\n  Run: bash setup.sh --build-kg"
 fi
 ok "KuzuDB: $KUZU_PATH"
