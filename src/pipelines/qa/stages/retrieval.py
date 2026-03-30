@@ -82,9 +82,12 @@ class HybridRetriever:
             if self.llm:
                 cand_str = ', '.join(repr(c) for c in cands)
                 prompt = (
-                    f"A question mentions entity '{name}'. "
-                    f"Which of these KG names best matches?\nOptions: {cand_str}\n"
-                    f"Output ONLY the exact name from the list, nothing else."
+                    f"В вопросе упоминается сущность '{name}'. "
+                    f"Какое из этих названий в базе знаний лучше всего соответствует?\n"
+                    f"Варианты: {cand_str}\n"
+                    f"Выведи ТОЛЬКО точное название из списка, ничего больше.\n"
+                    f"(If the question is in English: Which of these KG names best matches "
+                    f"'{name}'? Output ONLY the exact name from the list.)"
                 )
                 try:
                     choice = self.llm.generate(prompt).strip().strip("\"'")
@@ -99,8 +102,10 @@ class HybridRetriever:
         if self.llm:
             try:
                 norm = self.llm.generate(
-                    f"What is the full official Wikidata/Wikipedia name of '{name}'? "
-                    f"Output ONLY the name, nothing else."
+                    f"Как официально называется сущность '{name}' в Wikidata/Wikipedia? "
+                    f"Выведи ТОЛЬКО название, ничего больше. "
+                    f"(English fallback: What is the full official name of '{name}'? "
+                    f"Output ONLY the name.)"
                 ).strip().strip("\"'")
                 wd_id = self.mapper.get_id(norm)
                 if wd_id:
@@ -413,11 +418,12 @@ class HybridRetriever:
             ctx = '\n'.join(f"- {QuadrupletCreator.stringify(q)[1]}" for q in top_quads)
             
             prompt = (
-                f"FACTS about the entity:\n{ctx}\n\n"
-                f"Based ONLY on these facts, what is the 4-digit YEAR when the "
-                f"entity was '{anchor_event}'?\n"
-                f"Question Context: {question}\n"
-                f"Output ONLY the year (e.g., 1961), or NULL if not found."
+                f"ФАКТЫ о сущности:\n{ctx}\n\n"
+                f"На основе ТОЛЬКО этих фактов: в каком году произошло '{anchor_event}'?\n"
+                f"Контекст вопроса: {question}\n"
+                f"Выведи ТОЛЬКО год (например, 1961) или NULL если не найдено.\n"
+                f"(English: Based ONLY on these facts, what year was '{anchor_event}'? "
+                f"Output ONLY the year or NULL.)"
             )
             
             raw = self.llm.generate(prompt).strip()

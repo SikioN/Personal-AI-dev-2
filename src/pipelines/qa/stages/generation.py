@@ -70,7 +70,7 @@ class GenerationStage:
             sig = f'{s}|{r}|{o}|{t}'
             if sig not in seen:
                 seen.add(sig)
-                lines.append(f'- {s} → {r} → {o} (Год: {t})')
+                lines.append(f'- {s} → {r} → {o} (Year: {t})')
         ctx = '\n'.join(lines)
         if len(ctx) > self._MAX_CTX_CHARS:
             ctx = ctx[:self._MAX_CTX_CHARS] + "\n... [context truncated]"
@@ -130,8 +130,14 @@ class GenerationStage:
                     context_used=ctx,
                 )
 
+            _null_tokens = {'null', 'нет', 'не найдено', 'неизвестно', 'unknown'}
+
+            def _is_null(text: str) -> bool:
+                t = text.strip().lower()
+                return not t or any(tok in t for tok in _null_tokens)
+
             if answer_type == 'year' or q_type == 'simple_time':
-                if 'null' in raw_ans.lower():
+                if _is_null(raw_ans):
                     answer = 'Unknown'
                 else:
                     year = self._extract_year(raw_ans)
@@ -141,7 +147,7 @@ class GenerationStage:
                         answer = raw_ans.strip() or 'Unknown'
             else:
                 stripped = raw_ans.strip()
-                if not stripped or 'null' in stripped.lower():
+                if _is_null(stripped):
                     answer = 'Unknown'
                 else:
                     # If LLM returned a raw Wikidata Q-ID (legacy fallback), decode it

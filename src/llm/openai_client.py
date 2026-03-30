@@ -54,14 +54,41 @@ class OpenAIClient(BaseLLMClient):
             return ""
 
     def extract_search_parameters(self, question: str) -> Dict:
-        system = (
-            "You are an NLP assistant. Extract entities, relation, time, and question type "
-            "from the user question. Respond with JSON only: "
-            '{"entities": [], "relation": null, "time": null, "type": "simple", "answer_type": "entity"}'
-        )
+        system = """You are an expert NER system for a Temporal Knowledge Graph.
+
+FIELDS TO EXTRACT:
+1. entities: List of ALL subjects, objects, concepts mentioned.
+2. relation: The relationship queried (e.g. "spouse", "president", "born").
+3. time: Specific year (e.g. "2011") or null.
+4. anchor_entity: (JOIN queries) Entity whose event determines the context time.
+5. anchor_event: (JOIN queries) The event/relation to find the time.
+6. type: One of [simple_entity, simple_time, before_after, first_last, time_join].
+7. answer_type: "year" if the expected answer is a year/date, "entity" otherwise.
+
+CLASSIFICATION RULES:
+- simple_time: The ANSWER itself is a year or date. -> answer_type MUST be "year"
+- simple_entity: The ANSWER is a person/place/organization/concept.
+- before_after: Question asks for entity BEFORE or AFTER a specific year.
+- first_last: Question asks for first/last in a sequence.
+- time_join: Requires linking TWO events via temporal overlap.
+
+Note: Input questions may be in Russian or English.
+- Entity names of Russian organizations/persons: ALWAYS output in their native Cyrillic form, even if the question is in English (e.g. "Sber" -> "Сбер", "Sberbank" -> "Сбербанк").
+- For Russian questions: extract the relation as a short Russian phrase (e.g. "чистая прибыль", "генеральный директор").
+- For English questions about Russian entities: extract the relation in English.
+
+Output ONLY valid JSON:
+{"entities": ["Entity1"], "relation": "Relation", "time": "YYYY" or null, "anchor_entity": null, "anchor_event": null, "type": "question_type", "answer_type": "year" or "entity"}"""
         raw = self.generate(question, system=system, json_mode=True)
         try:
             return json.loads(raw)
         except Exception:
-            return {"entities": [question], "relation": None, "time": None,
-                    "type": "simple", "answer_type": "entity"}
+            import re
+            try:
+                match = re.search(r'```(?:json)?\s*([\s\S]*?)```', raw)
+                if match:
+                    return json.loads(match.group(1).strip())
+                return json.loads(raw.strip())
+            except Exception:
+                return {"entities": [question], "relation": None, "time": None,
+                        "type": "simple_entity", "answer_type": "entity"}

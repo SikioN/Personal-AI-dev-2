@@ -36,10 +36,12 @@ class QAConfig:
     tcomplex_alpha: float = 0.5
 
     before_words: Tuple[str, ...] = (
-        'before', 'prior to', 'earlier than', 'preceding', 'until', 'up to', 'by'
+        'before', 'prior to', 'earlier than', 'preceding', 'until', 'up to', 'by',
+        'до', 'раньше', 'ранее', 'перед', 'предшествующий', 'не позднее',
     )
     after_words: Tuple[str, ...] = (
-        'after', 'since', 'following', 'post-', 'from', 'starting from', 'beyond'
+        'after', 'since', 'following', 'post-', 'from', 'starting from', 'beyond',
+        'после', 'с', 'начиная с', 'позже', 'позднее', 'следующий', 'с момента',
     )
 
     # Neo4j connection (external DB — no in-memory graph)
