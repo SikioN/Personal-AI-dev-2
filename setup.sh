@@ -248,17 +248,21 @@ if $BUILD_KG; then
         QUADS_DEL="${CHROMA_QUADS_PATH:-data/graph_structures/vectorized_quadruplets/default}"
         # Use Python shutil.rmtree — more reliable than rm -rf for ChromaDB nested UUID dirs.
         # ignore_errors=True skips NFS .nfsXXXX busy temp files (auto-cleaned by NFS later).
+        # For KuzuDB: KUZU_PATH may be a file (data/kuzu_db/graph.db); delete the whole
+        # parent directory to remove all internal KuzuDB catalog/table files alongside it.
         "$VENV_PYTHON" - <<PYEOF
 import shutil, os
-for p in [r"$KUZU_DEL", r"$NODES_DEL", r"$QUADS_DEL"]:
+
+kuzu_raw = r"$KUZU_DEL"
+# If KUZU_PATH points to a file, wipe the whole parent dir (KuzuDB stores metadata there too)
+kuzu_dir = kuzu_raw if os.path.isdir(kuzu_raw) else os.path.dirname(kuzu_raw)
+if kuzu_dir and os.path.exists(kuzu_dir):
+    shutil.rmtree(kuzu_dir, ignore_errors=True)
+    print(f"  [--]  Удалено KuzuDB: {kuzu_dir}")
+
+for p in [r"$NODES_DEL", r"$QUADS_DEL"]:
     if os.path.exists(p):
-        if os.path.isdir(p):
-            shutil.rmtree(p, ignore_errors=True)
-        else:
-            try:
-                os.remove(p)
-            except OSError:
-                pass
+        shutil.rmtree(p, ignore_errors=True)
         print(f"  [--]  Удалено: {p}")
 PYEOF
         ok "--clean выполнен"
