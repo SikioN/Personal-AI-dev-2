@@ -1,14 +1,16 @@
 #!/bin/bash
 # setup.sh — Bootstrap for KG Navigator bot
-# Usage: bash setup.sh [--build-kg]
+# Usage: bash setup.sh [--build-kg] [--reprocess]
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 BUILD_KG=false
+REPROCESS=false
 for arg in "$@"; do
-    [[ "$arg" == "--build-kg" ]] && BUILD_KG=true
+    [[ "$arg" == "--build-kg" ]]   && BUILD_KG=true
+    [[ "$arg" == "--reprocess" ]]  && REPROCESS=true
 done
 
 # ── Colors ────────────────────────────────────────────────────────────────────
@@ -239,11 +241,14 @@ if $BUILD_KG; then
     if [[ "$AVAIL_KB" -lt 2097152 ]]; then
         warn "Low disk space: $(( AVAIL_KB / 1024 )) MB available. Building KG may require ≥2 GB."
     fi
-    info "Running scripts/ingest_directory.py --dir $INGEST_DIR ..."
+    REPROCESS_FLAG=""
+    $REPROCESS && REPROCESS_FLAG="--reprocess"
+    info "Running scripts/ingest_directory.py --dir $INGEST_DIR $REPROCESS_FLAG..."
     "$VENV_PYTHON" scripts/ingest_directory.py \
         --dir "$INGEST_DIR" \
         --tkbc-dir "$TKBC_DIR" \
-        --epochs "${RETRAIN_EPOCHS:-50}"
+        --epochs "${RETRAIN_EPOCHS:-50}" \
+        $REPROCESS_FLAG
     ok "KG build complete"
 fi
 
