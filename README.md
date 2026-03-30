@@ -57,6 +57,12 @@ cp /path/to/your/documents/* extract/new_docs/
 bash setup.sh --build-kg
 ```
 
+> Для повторной пересборки (если файлы уже обрабатывались) — остановите бота и добавьте `--reprocess`:
+> ```bash
+> pkill -f "bot.py\|run_db"
+> bash setup.sh --build-kg --reprocess
+> ```
+
 ```bash
 bash run_db.sh
 ```
@@ -337,7 +343,12 @@ P26	spouse
 # Разместить документы в INGEST_DIR (или задать свою директорию в .env):
 cp /path/to/your/documents/* extract/new_docs/
 
+# Первичная сборка:
 bash setup.sh --build-kg
+
+# Повторная пересборка (файлы уже обрабатывались — остановите бота перед запуском):
+pkill -f "bot.py\|run_db"
+bash setup.sh --build-kg --reprocess
 ```
 
 **Верификация после сборки:**
