@@ -43,10 +43,12 @@ class KuzuConnector(AbstractGraphDatabaseConnection):
     def open_connection(self) -> ReturnInfo:
         load_path = self.config.params['path']
 
-        # Kuzu stores its database in a directory.
-        if not os.path.exists(load_path):
-            os.makedirs(load_path, exist_ok=True)
-            logger.info("[KuzuConnector] Created new database directory at: %s", os.path.abspath(load_path))
+        # KuzuDB >=0.6 uses a FILE path (e.g. data/kuzu_db/graph.db), not a directory.
+        # Only create the parent directory; let KuzuDB create the database file itself.
+        parent = os.path.dirname(load_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+            logger.info("[KuzuConnector] Ensured parent directory exists: %s", os.path.abspath(parent))
 
         logger.info("[KuzuConnector] Opening KuzuDB at: %s", os.path.abspath(load_path))
         self.db = kuzu.Database(load_path, buffer_pool_size=self.config.params['buffer_pool_size'])
