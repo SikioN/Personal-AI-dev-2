@@ -60,6 +60,8 @@ CLASSIFICATION RULES:
 - first_last: Question asks for first/last in a sequence.
 - time_join: Requires linking TWO events via temporal overlap.
 
+Note: Input questions may be in Russian. Preserve entity names in their original language in "entities" list.
+
 Output ONLY valid JSON:
 {
     "entities": ["Entity1", "Entity2"],
@@ -72,7 +74,7 @@ Output ONLY valid JSON:
 }
 """
         prompt = f"Question: {question}"
-        
+
         response = self.generate(prompt, system=system_prompt, json_mode=True)
         if not response:
             return {}

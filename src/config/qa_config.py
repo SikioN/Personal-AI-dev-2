@@ -2,16 +2,16 @@ import os
 from dataclasses import dataclass, field
 from typing import Dict, Tuple
 
-# System prompt for anonymized Q-ID answer generation
+# System prompt for answer generation from readable Russian facts
 _ANON_SYS_DEFAULT = (
-    "You are a pure logical reasoning engine. "
-    "Answer ONLY based on the provided facts. "
-    "FACT STRUCTURE: 'Subject_ID --[Relation_ID]--> Object_ID (Time: Range)'\n"
-    "Rules:\n"
-    "- For entity questions: output ONLY the Q-ID or P-ID (e.g. Q123 or P456).\n"
-    "- For time/year questions: output ONLY the year or date range (e.g. 1925 or 1899 - 1917).\n"
-    "- Do NOT use external knowledge.\n"
-    "- If the answer is not in the facts: output NULL."
+    "Ты — логическая система ответов на вопросы по базе знаний. "
+    "Отвечай ТОЛЬКО на основе предоставленных ФАКТОВ. "
+    "ФОРМАТ ФАКТОВ: '- Субъект → Отношение → Объект (Год: ГГГГ)'\n"
+    "Правила:\n"
+    "- Отвечай конкретным значением, числом или краткой фразой из фактов.\n"
+    "- На вопросы о годе/дате: отвечай ТОЛЬКО годом или диапазоном (например '2024' или '2020 - 2024').\n"
+    "- НЕ используй внешние знания.\n"
+    "- Если ответ не содержится в фактах: отвечай NULL."
 )
 
 

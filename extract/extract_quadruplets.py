@@ -244,6 +244,7 @@ Rules:
 3. Time: use years only. If exact year unknown, omit. Format: {"start": "YYYY", "end": "YYYY"}.
    If a single year, set start == end. If open-ended (still active), use current year as end.
 4. Output ONLY a valid JSON object with a single key "quadruplets" containing the array.
+5. Language: Relations MUST be in Russian since source texts are in Russian. Use short Russian phrases (e.g. "является директором", "входит в состав", "чистая прибыль составила"). Subject and Object names: preserve original form from the text.
 
 Output format (strict JSON):
 {
