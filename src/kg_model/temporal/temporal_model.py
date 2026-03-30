@@ -13,30 +13,30 @@ def _compute_optimal_batch_size(
     n_entities: int,
     rank: int,
     device: str,
-    safety_factor: float = 0.4,
+    safety_factor: float = 0.6,
 ) -> int:
     """Auto-compute batch size for TComplEx training on given device.
 
-    With BF16: ~2 bytes/element for activation tensor (batch × n_entities).
-    A100 80GB can handle large batches; clamped to power-of-2 for CUDA efficiency.
+    Uses currently FREE GPU memory (not total) so the batch fits even when
+    other processes share the GPU.
     """
     if "cuda" not in device:
-        return 1000  # CPU: conservative default
+        return 512  # CPU: conservative default
 
     try:
         gpu_idx = int(device.split(":")[-1]) if ":" in device else 0
-        total_mem = torch.cuda.get_device_properties(gpu_idx).total_memory
+        free_mem, _ = torch.cuda.mem_get_info(gpu_idx)
     except Exception:
-        total_mem = 80 * 1024 ** 3  # fallback: assume A100 80GB
+        free_mem = 8 * 1024 ** 3  # fallback: 8GB conservative
 
     # Estimate param memory (float32): 3 embedding tables × n_entities × 2*rank × 4 bytes
     param_mem = 3 * n_entities * 2 * rank * 4
-    # Usable memory for activations = total × safety_factor − params − gradients
-    usable = max(0, total_mem * safety_factor - 2 * param_mem)
+    # Usable = free × safety_factor − params − gradients
+    usable = max(0, free_mem * safety_factor - 2 * param_mem)
     # Activation cost per batch item: n_entities × 2 bytes (BF16)
     cost_per_item = n_entities * 2
-    raw_bs = int(usable / cost_per_item) if cost_per_item > 0 else 1000
-    raw_bs = max(256, min(raw_bs, 65536))
+    raw_bs = int(usable / cost_per_item) if cost_per_item > 0 else 512
+    raw_bs = max(256, min(raw_bs, 16384))
     # Round down to nearest power-of-2 for CUDA efficiency
     bs = 1
     while bs * 2 <= raw_bs:
