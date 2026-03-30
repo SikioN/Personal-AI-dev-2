@@ -230,6 +230,16 @@ def main() -> None:
         from src.bot.engine_loader import load_engine
         engine, _, kg_model = load_engine()
 
+        # If the production engine failed due to a KuzuDB lock, abort immediately.
+        # Silently falling back to in-memory would save facts to a stash file
+        # instead of KuzuDB, causing silent data loss.
+        if kg_model is None and os.environ.get('USE_INMEMORY', 'false').lower() != 'true':
+            raise RuntimeError(
+                "Production engine failed to load — KuzuDB is likely locked by another process.\n"
+                "  Stop the bot first:  pkill -f 'run_db\\|bot.py'\n"
+                "  Then re-run:         bash setup.sh --build-kg --reprocess"
+            )
+
         from src.pipelines.ingestion.doc_ingestion_service import DocIngestionService
         service = DocIngestionService(
             kg_model=kg_model,
