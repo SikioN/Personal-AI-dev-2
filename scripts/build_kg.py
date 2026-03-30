@@ -22,6 +22,10 @@ def main():
     parser.add_argument("--force", action="store_true", help="Rebuild even if already populated")
     parser.add_argument("--skip-chroma", action="store_true",
                         help="Skip ChromaDB embedding phase (use if pre-built ChromaDB exists)")
+    parser.add_argument("--clean", action="store_true",
+                        help="Delete existing KuzuDB and ChromaDB before rebuilding")
+    parser.add_argument("--no-wikidata", action="store_true",
+                        help="Skip loading full.txt; initialize empty KG for document-only use")
     args = parser.parse_args()
 
     # Load .env if python-dotenv is available
@@ -42,9 +46,10 @@ def main():
     ent_file = os.path.join(kg_data_path, "wd_id2entity_text.txt")
     rel_file = os.path.join(kg_data_path, "wd_id2relation_text.txt")
 
-    if not os.path.exists(full_txt):
+    if not args.no_wikidata and not os.path.exists(full_txt):
         logger.error(f"full.txt not found at: {full_txt}")
         logger.error("Set KG_DATA_PATH env var or place data in wikidata_big/kg/")
+        logger.error("To build a document-only KG without Wikidata, use: --no-wikidata")
         sys.exit(1)
 
     # ── Build KnowledgeGraphModel with KuzuDB + ChromaDB ──────────────────────
@@ -118,8 +123,32 @@ def main():
         graph_config=GraphModelConfig(driver_config=graph_driver_cfg),
     )
 
+    # ── --clean: wipe existing stores before init ─────────────────────────────
+    if args.clean:
+        import shutil
+        logger.warning("--clean: deleting existing KuzuDB and ChromaDB data...")
+        for path_to_del in (kuzu_path, nodes_path, quads_path):
+            if os.path.exists(path_to_del):
+                if os.path.isdir(path_to_del):
+                    shutil.rmtree(path_to_del)
+                else:
+                    os.remove(path_to_del)
+                logger.info("  Deleted: %s", path_to_del)
+        # Recreate ChromaDB directories (KuzuDB dir is created by KuzuConnector)
+        os.makedirs(nodes_path, exist_ok=True)
+        os.makedirs(quads_path, exist_ok=True)
+        logger.info("--clean done. Fresh stores will be created.")
+        # Force rebuild
+        args.force = True
+
     logger.info("Initializing KnowledgeGraphModel (KuzuDB + ChromaDB)...")
     kg_model = KnowledgeGraphModel(kg_model_cfg)
+
+    # ── --no-wikidata: initialize empty KG and exit ───────────────────────────
+    if args.no_wikidata:
+        logger.info("--no-wikidata: empty KG initialized. Run document ingestion to populate.")
+        logger.info("  bash setup.sh --build-kg [--reprocess]")
+        return
 
     # ── Idempotency check ─────────────────────────────────────────────────────
     db_conn = kg_model.graph_struct.db_conn

@@ -8,9 +8,13 @@ cd "$SCRIPT_DIR"
 
 BUILD_KG=false
 REPROCESS=false
+CLEAN=false
+NO_WIKIDATA=false
 for arg in "$@"; do
-    [[ "$arg" == "--build-kg" ]]   && BUILD_KG=true
-    [[ "$arg" == "--reprocess" ]]  && REPROCESS=true
+    [[ "$arg" == "--build-kg" ]]     && BUILD_KG=true
+    [[ "$arg" == "--reprocess" ]]    && REPROCESS=true
+    [[ "$arg" == "--clean" ]]        && CLEAN=true
+    [[ "$arg" == "--no-wikidata" ]]  && NO_WIKIDATA=true
 done
 
 # ── Colors ────────────────────────────────────────────────────────────────────
@@ -185,12 +189,14 @@ echo -e "\n${BOLD}[6] KG data (full.txt)${NC}"
 KG_DATA_PATH="${KG_DATA_PATH:-wikidata_big/kg}"
 FULL_TXT="$KG_DATA_PATH/full.txt"
 LINE_COUNT=0
-if [[ -f "$FULL_TXT" ]]; then
+if $NO_WIKIDATA; then
+    info "Режим --no-wikidata: full.txt не используется, KG строится только из документов"
+elif [[ -f "$FULL_TXT" ]]; then
     LINE_COUNT=$(wc -l < "$FULL_TXT" | tr -d ' ')
     ok "full.txt found — $LINE_COUNT lines ($FULL_TXT)"
 else
     warn "full.txt not found at: $FULL_TXT"
-    warn "Place your KG data there or set KG_DATA_PATH in .env"
+    warn "Place your KG data there, set KG_DATA_PATH in .env, or use --no-wikidata"
 fi
 
 # ── 7. E5 model ───────────────────────────────────────────────────────────────
@@ -233,6 +239,22 @@ if $BUILD_KG; then
     echo -e "\n${BOLD}[9] Building KG (extract → KuzuDB + ChromaDB + TComplEx)${NC}"
     INGEST_DIR="${INGEST_DIR:-extract/new_docs}"
     TKBC_DIR="${TCOMPLEX_DATA_PATH:-wikidata_big/kg/tkbc_processed_data/wikidata_big}"
+
+    # ── --clean: удалить существующие данные KG ──────────────────────────────
+    if $CLEAN; then
+        warn "--clean: удаление существующих данных KG..."
+        KUZU_DEL="${KUZU_PATH:-data/kuzu_db}"
+        NODES_DEL="${CHROMA_NODES_PATH:-data/graph_structures/vectorized_nodes/default}"
+        QUADS_DEL="${CHROMA_QUADS_PATH:-data/graph_structures/vectorized_quadruplets/default}"
+        for p in "$KUZU_DEL" "$NODES_DEL" "$QUADS_DEL"; do
+            if [[ -e "$p" ]]; then
+                rm -rf "$p"
+                info "Удалено: $p"
+            fi
+        done
+        ok "--clean выполнен"
+    fi
+
     if [[ ! -d "$INGEST_DIR" ]]; then
         err "INGEST_DIR not found: $INGEST_DIR\n  Place documents (PDF/DOCX/PPTX/TXT) there or set INGEST_DIR in .env"
         exit 1
@@ -281,9 +303,13 @@ echo ""
 
 # Data block
 echo -e "${BOLD}Data:${NC}"
-[[ -f "$FULL_TXT" ]] \
-    && echo -e "  full.txt  : ${GREEN}OK${NC}  ($LINE_COUNT lines)" \
-    || echo -e "  full.txt  : ${YELLOW}missing${NC}"
+if $NO_WIKIDATA; then
+    echo -e "  full.txt  : ${CYAN}пропущен (--no-wikidata)${NC}"
+elif [[ -f "$FULL_TXT" ]]; then
+    echo -e "  full.txt  : ${GREEN}OK${NC}  ($LINE_COUNT lines)"
+else
+    echo -e "  full.txt  : ${YELLOW}missing${NC}"
+fi
 [[ -f "$E5_PATH/config.json" ]] \
     && echo -e "  E5 model  : ${GREEN}OK${NC}" \
     || echo -e "  E5 model  : ${YELLOW}missing${NC}"
@@ -303,8 +329,10 @@ echo ""
 echo -e "${BOLD}Next steps:${NC}"
 echo -e "  1. Fill in ${BOLD}.env${NC}  (TELEGRAM_BOT_TOKEN + LLM credentials)"
 echo -e "  2a. Quick test : ${CYAN}bash run_inmemory.sh${NC}"
-echo -e "  2b. Production : ${CYAN}cp /path/to/docs/* extract/new_docs/${NC}"
-echo -e "                   ${CYAN}bash setup.sh --build-kg${NC}  then  ${CYAN}bash run_db.sh${NC}"
+echo -e "  2b. Production (с Wikidata) : ${CYAN}cp /path/to/docs/* extract/new_docs/${NC}"
+echo -e "                               ${CYAN}bash setup.sh --build-kg${NC}  then  ${CYAN}bash run_db.sh${NC}"
+echo -e "  2c. Только из документов   : ${CYAN}bash setup.sh --build-kg --clean --no-wikidata --reprocess${NC}"
+echo -e "      (пересборка с нуля)     ${CYAN}bash run_db.sh${NC}"
 echo ""
 echo -e "${BOLD}════════════════════════════════════════════════════════${NC}"
 echo ""

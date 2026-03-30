@@ -23,7 +23,10 @@ class GenerationResult:
 
 
 class GenerationStage:
-    """Stage 7: anonymized Q-ID generation + answer_type-aware decoding."""
+    """Stage 7: readable-name context generation + answer_type-aware decoding."""
+
+    # Pattern matching raw entity/relation IDs that are not human-readable
+    _ID_RE = re.compile(r'^(Q\d+|P\d+|CQ_\d+|LOCAL_\w+)$', re.IGNORECASE)
 
     def __init__(
         self,
@@ -35,34 +38,39 @@ class GenerationStage:
         self.mapper = mapper
         self.config = config
 
-    def _anonymize_question(
-        self,
-        question: str,
-        resolved_entities: List,  # List[Tuple[orig, resolved_name, wd_id]]
-    ) -> str:
-        """Replace entity names in question with Q-IDs."""
-        anon_q = question
-        for orig, resolved_name, wd_id in resolved_entities:
-            if wd_id:
-                for name in (resolved_name, orig):
-                    if name and name in anon_q:
-                        anon_q = anon_q.replace(name, wd_id)
-        return anon_q
+    def _get_display_name(self, node) -> str:
+        """Return a human-readable name for a node.
+
+        Priority:
+        1. node.name if it is not an ID-format string (already readable).
+        2. Try mapper.get_label() on node.name and/or prop['wd_id'].
+        3. Fallback: return node.name as-is (CQ_ or LOCAL_ ID).
+        """
+        name = (node.name or '').strip()
+        if name and not self._ID_RE.match(name):
+            return name  # already readable ("Сбер", "1508 млрд руб")
+        # Try to resolve via mapper
+        for candidate in (name, (node.prop or {}).get('wd_id', '')):
+            if candidate:
+                label = self.mapper.get_label(str(candidate))
+                if label and not self._ID_RE.match(str(label)):
+                    return label
+        return name or node.id or '?'
 
     _MAX_CTX_CHARS = 6000  # conservative limit (~8k tokens)
 
     def _build_anon_ctx(self, quads: List[Quadruplet]) -> str:
-        """Build anonymized context using Wikidata Q/P IDs only."""
+        """Build readable context from quadruplets for the LLM."""
         lines, seen = [], set()
         for q in quads:
-            s = q.start_node.prop.get('wd_id') or q.start_node.id or '?'
-            r = q.relation.prop.get('wd_id') or q.relation.id or '?'
-            o = q.end_node.prop.get('wd_id') or q.end_node.id or '?'
+            s = self._get_display_name(q.start_node)
+            r = (q.relation.name or '').strip() or '?'
+            o = self._get_display_name(q.end_node)
             t = q.time.name if q.time else 'Always'
-            sig = f'{s}-{r}-{o}-{t}'
+            sig = f'{s}|{r}|{o}|{t}'
             if sig not in seen:
                 seen.add(sig)
-                lines.append(f'- {s} --[{r}]--> {o} (Time: {t})')
+                lines.append(f'- {s} → {r} → {o} (Год: {t})')
         ctx = '\n'.join(lines)
         if len(ctx) > self._MAX_CTX_CHARS:
             ctx = ctx[:self._MAX_CTX_CHARS] + "\n... [context truncated]"
@@ -91,26 +99,25 @@ class GenerationStage:
         retrieval: "RetrievalResult",
     ) -> GenerationResult:
         try:
-            anon_q = self._anonymize_question(question, retrieval.resolved_entities)
             ctx = self._build_anon_ctx(selected_quads)
 
             answer_type = extraction.answer_type
             q_type = extraction.q_type
 
             if answer_type == 'year' or q_type == 'simple_time':
-                answer_hint = 'ANSWER (year or date range only, e.g. "1925" or "1899 - 1917"):'
+                answer_hint = 'ОТВЕТ (только год или диапазон лет, например "2024" или "2020 - 2024"):'
             else:
-                answer_hint = 'ANSWER (Q-ID only, e.g. Q123):'
+                answer_hint = 'ОТВЕТ (конкретное значение, число или краткая фраза из ФАКТОВ выше):'
 
             user_msg = (
-                f"QUESTION: {anon_q}\n"
-                f"TIME CONTEXT: {retrieval.resolved_time}\n"
-                f"FACTS:\n{ctx}\n"
+                f"ВОПРОС: {question}\n"
+                f"ВРЕМЕННОЙ КОНТЕКСТ: {retrieval.resolved_time}\n"
+                f"ФАКТЫ:\n{ctx}\n"
                 f"{answer_hint}"
             )
 
             raw_ans = self.llm.generate(user_msg, system=self.config.anon_system_prompt)
-            
+
             if hasattr(self.config, 'debug') and self.config.debug:
                 print(f"  [GEN] raw_llm_output={raw_ans!r}")
                 print(f"  [GEN] context_used (lines)={len(ctx.splitlines())}")
@@ -131,23 +138,22 @@ class GenerationStage:
                     if year:
                         answer = year
                     else:
-                        # Fallback: try to decode Q-ID and look up its label (might be a year node)
-                        qid = self._decode_qid(raw_ans)
-                        if qid:
-                            label = self.mapper.get_label(qid)
-                            year2 = self._extract_year(label)
-                            answer = year2 or label
-                        else:
-                            answer = raw_ans.strip() or 'Unknown'
+                        answer = raw_ans.strip() or 'Unknown'
             else:
-                qid = self._decode_qid(raw_ans)
-                if qid:
-                    label = self.mapper.get_label_with_id(qid)
-                    answer = label if label else qid
-                elif 'null' in raw_ans.lower():
+                stripped = raw_ans.strip()
+                if not stripped or 'null' in stripped.lower():
                     answer = 'Unknown'
                 else:
-                    answer = raw_ans.strip() or 'Unknown'
+                    # If LLM returned a raw Wikidata Q-ID (legacy fallback), decode it
+                    qid = self._decode_qid(stripped)
+                    if qid:
+                        label = self.mapper.get_label_with_id(qid)
+                        if label and not self._ID_RE.match(label):
+                            answer = label
+                        else:
+                            answer = stripped
+                    else:
+                        answer = stripped
 
             decoded_qid = self._decode_qid(raw_ans)
             return GenerationResult(

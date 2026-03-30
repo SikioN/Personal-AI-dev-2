@@ -63,6 +63,12 @@ bash setup.sh --build-kg
 > bash setup.sh --build-kg --reprocess
 > ```
 
+> Для полной пересборки KG **только из документов** (без данных Wikidata) — удалить старый граф и начать с нуля:
+> ```bash
+> pkill -f "bot.py\|run_db"
+> bash setup.sh --build-kg --clean --no-wikidata --reprocess
+> ```
+
 ```bash
 bash run_db.sh
 ```
@@ -349,6 +355,10 @@ bash setup.sh --build-kg
 # Повторная пересборка (файлы уже обрабатывались — остановите бота перед запуском):
 pkill -f "bot.py\|run_db"
 bash setup.sh --build-kg --reprocess
+
+# Полная пересборка KG только из документов (удалить старый граф, без Wikidata):
+pkill -f "bot.py\|run_db"
+bash setup.sh --build-kg --clean --no-wikidata --reprocess
 ```
 
 **Верификация после сборки:**

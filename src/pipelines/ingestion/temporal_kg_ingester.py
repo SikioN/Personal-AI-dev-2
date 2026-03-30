@@ -47,6 +47,22 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+import re as _re
+_ID_RE_ING = _re.compile(r'^(Q\d+|P\d+|CQ_\d+|LOCAL_\w+)$', _re.IGNORECASE)
+
+
+def _readable_node_name(res) -> str:
+    """Return a human-readable name for a node from a ResolutionResult.
+
+    When the entity resolver maps e.g. "Сбер" to an existing entity whose
+    canonical_name is stored as a raw ID like "CQ_046372", prefer the original
+    input text so the graph stores a readable label.
+    """
+    canonical = (res.canonical_name or '').strip()
+    if _ID_RE_ING.match(canonical):
+        return (res.input_name or canonical).strip() or canonical
+    return canonical
+
 
 # ---------------------------------------------------------------------------
 # Result dataclass
@@ -225,12 +241,12 @@ class TemporalKGIngester:
                     s_res = self.entity_resolver.resolve(s_name, node_type="object", wd_id_hint=s_id_hint)
                     o_res = self.entity_resolver.resolve(o_name, node_type="object", wd_id_hint=o_id_hint)
                     s_node = NodeCreator.create(
-                        NodeType.object, name=s_res.canonical_name,
+                        NodeType.object, name=_readable_node_name(s_res),
                         prop={"wd_id": s_res.canonical_id})
                     if s_res.input_name != s_res.canonical_name:
                         s_node.alias_to_add = s_res.input_name
                     o_node = NodeCreator.create(
-                        NodeType.object, name=o_res.canonical_name,
+                        NodeType.object, name=_readable_node_name(o_res),
                         prop={"wd_id": o_res.canonical_id})
                     if o_res.input_name != o_res.canonical_name:
                         o_node.alias_to_add = o_res.input_name
