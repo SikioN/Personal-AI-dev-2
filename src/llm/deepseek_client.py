@@ -28,7 +28,7 @@ CLASSIFICATION RULES (CRITICAL):
 - before_after: asks about facts BEFORE or AFTER a year.
 - first_last: sequence ordering (first book, last award).
 
-Note: Input questions may be in Russian. Preserve entity names in their original language in "entities" list.
+Note: Input questions may be in Russian or English. Preserve entity names in their original language in "entities" list. For Russian questions, extract the relation as a descriptive phrase in Russian (e.g. "чистая прибыль", "генеральный директор").
 
 Output ONLY valid JSON:
 {

@@ -111,7 +111,7 @@ CLASSIFICATION RULES:
 - first_last: Question asks for first/last in a sequence.
 - time_join: Requires linking TWO events via temporal overlap.
 
-Note: Input questions may be in Russian. Preserve entity names in their original language in "entities" list.
+Note: Input questions may be in Russian or English. Preserve entity names in their original language in "entities" list. For Russian questions, extract the relation as a descriptive phrase in Russian (e.g. "чистая прибыль", "генеральный директор").
 
 Output ONLY valid JSON:
 {
