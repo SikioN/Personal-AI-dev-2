@@ -42,14 +42,15 @@ def format_ask_with_ranked(answer: str, results: List[Dict], top_k: int = 5) -> 
             q = res['quadruplet']
             conf = res.get('confidence', 0.0)
             conf_str = _esc(f"{conf:.2f}")
+            seen = "✓ " if res.get('_used_by_llm') else "\\- "
             if isinstance(q, str):
-                lines.append(f"{i}\\. \\[{conf_str}\\] {_esc(q)}")
+                lines.append(f"{i}\\. \\[{conf_str}\\] {seen}{_esc(q)}")
             else:
                 subj = _esc(q.start_node.name)
                 rel = _esc(q.relation.name)
                 obj = _esc(q.end_node.name)
                 time_str = _format_time(q)
-                lines.append(f"{i}\\. \\[{conf_str}\\] {subj} → {rel} → {obj}{time_str}")
+                lines.append(f"{i}\\. \\[{conf_str}\\] {seen}{subj} → {rel} → {obj}{time_str}")
     return "\n".join(lines)
 
 

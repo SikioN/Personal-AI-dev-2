@@ -165,44 +165,40 @@ class ScoringStage:
             )
             top_scored = [c[1] for c in (timed[:5] if is_first else timed[-5:])]
 
-        # P3: Gap-based selection (replaces LLM fact-selection)
-        # 2.4: temporal_bucket facts get a minimum confidence boost so they are not
-        # 3. Final Selection: Sacred Temporal Bucket + Gap-selected Extra Candidates
-        # Mirroring notebook logic: TB is ALWAYS prepended, gap filter only applies to the rest.
-        
-        # Identify TB quads and boost them
+        # P3: Final Selection
+        # For simple questions (no explicit time) TB is irrelevant — just take top-max_facts by score.
+        # For temporal questions, TB gets priority but we guarantee min 4 slots for non-TB facts.
         tb_quad_ids = {q.id for q in retrieval.temporal_bucket}
-        tb_scored_all = []
-        for r in scored:
-            if r.quad.id in tb_quad_ids:
-                # 2.4: temporal_bucket facts get a minimum confidence boost
-                # This ensures facts for the correct year are prioritized
-                r.conf = max(0.55, r.conf)
-                tb_scored_all.append(r)
-        
-        # [v7 Fix]: Limit the temporal bucket to prevent context flooding from noisy entities
-        # (e.g. 1700 Nobel Prize quads flooding the context for 1965).
-        # We take a generous limit but not "all".
-        tb_limit = max(10, self.config.max_facts * 2)
-        tb_scored = tb_scored_all[:tb_limit]
-        if len(tb_scored_all) > tb_limit:
-            print(f"  [SCORE] Limited temporal bucket from {len(tb_scored_all)} to {tb_limit} quads (Top-N by E5)")
 
-        # Get extra candidates not in TB
-        extra_scored = [r for r in top_scored if r.quad.id not in tb_quad_ids]
-        
-        # Apply gap selection only to EXTRA candidates
-        # We limit extra facts to ensure total doesn't exceed max_facts
-        remaining_slots = max(2, self.config.max_facts - len(tb_scored))
-        selected_extra = select_by_confidence_gap(
-            extra_scored,
-            min_f=min(self.config.min_facts, remaining_slots),
-            max_f=remaining_slots,
-            gap=self.config.confidence_gap,
-        )
+        if extraction.q_type in ('simple_entity', 'simple_time') or not resolved_time:
+            # No temporal context needed — select top-max_facts by E5/combined score directly.
+            selected_quads = [r.quad for r in scored[:self.config.max_facts]]
+        else:
+            # Boost TB facts and cap their count to avoid context flooding.
+            tb_scored_all = []
+            for r in scored:
+                if r.quad.id in tb_quad_ids:
+                    r.conf = max(0.55, r.conf)
+                    tb_scored_all.append(r)
 
-        # Final list: TB (Sacred) + Selected Extra
-        selected_quads = [r.quad for r in tb_scored] + [r.quad for r in selected_extra]
+            tb_limit = max(10, self.config.max_facts * 2)
+            tb_scored = tb_scored_all[:tb_limit]
+            if len(tb_scored_all) > tb_limit:
+                print(f"  [SCORE] Limited temporal bucket from {len(tb_scored_all)} to {tb_limit} quads")
+
+            extra_scored = [r for r in top_scored if r.quad.id not in tb_quad_ids]
+
+            # Guarantee at least 4 slots for high-relevance non-TB facts (was max(2, ...)).
+            min_extra = min(4, self.config.max_facts // 2)
+            remaining_slots = max(min_extra, self.config.max_facts - len(tb_scored))
+            selected_extra = select_by_confidence_gap(
+                extra_scored,
+                min_f=min(self.config.min_facts, remaining_slots),
+                max_f=remaining_slots,
+                gap=self.config.confidence_gap,
+            )
+
+            selected_quads = [r.quad for r in tb_scored] + [r.quad for r in selected_extra]
 
         if hasattr(self.config, 'debug') and self.config.debug:
             print(f"  [SCORE] Final quads selected: {len(selected_quads)}")
