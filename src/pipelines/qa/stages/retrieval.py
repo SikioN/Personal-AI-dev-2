@@ -575,10 +575,9 @@ class HybridRetriever:
         graph_only = [q for q in unique_graph if q.id not in merged_ids]
         all_candidates = vector_quads + graph_only
 
-        # E5 scores for graph-only candidates — use stripped question so temporal
-        # prefixes like "Когда"/"В каком году" don't shift the embedding away from facts.
-        _stripped_q = self._strip_temporal_prefix(question)
-        graph_scores = self._get_e5_for_graph_candidates(_stripped_q, graph_only)
+        # E5 scores for graph-only candidates (use original question — preserves natural
+        # query form which E5 handles well; temporal stripping caused regression).
+        graph_scores = self._get_e5_for_graph_candidates(question, graph_only)
         candidate_e5_scores = {**vector_scores, **graph_scores}
 
         # Final dedup
@@ -588,6 +587,22 @@ class HybridRetriever:
             if q.id not in seen2:
                 unique_candidates.append(q)
                 seen2.add(q.id)
+
+        # Keyword boost: if the question contains specific numbers/percentages,
+        # any fact whose stringified text contains ALL of them gets score 0.97.
+        # This guarantees facts like "53%" or "30%" reach the LLM context even
+        # when E5 embedding similarity is unexpectedly low.
+        _stripped_q = self._strip_temporal_prefix(question)
+        _key_nums = set(re.findall(r'\d+(?:[,\.]\d+)?\s*%', _stripped_q))
+        if not _key_nums:
+            # Fallback: 2+ digit standalone numbers (e.g. "53", "30")
+            _key_nums = set(re.findall(r'(?<!\d)\d{2,}(?!\d)', _stripped_q))
+        if _key_nums:
+            for cand in unique_candidates:
+                _, cand_text = QuadrupletCreator.stringify(cand)
+                if all(n in cand_text for n in _key_nums):
+                    old = candidate_e5_scores.get(cand.id, 0.0)
+                    candidate_e5_scores[cand.id] = max(old, 0.97)
 
         # Adaptive search_k: sub-linear growth capped at n_unique (notebook-aligned)
         # time_join gets max(search_k, 20) below — unchanged
