@@ -12,7 +12,7 @@ _ANON_SYS_DEFAULT = (
     "- Answer with a specific value, number, or short phrase from the facts.\n"
     "- For year/date questions: output ONLY the year or range (e.g. '2024' or '2020 - 2024').\n"
     "- Do NOT use external knowledge.\n"
-    "- If the answer is not in the facts: output NULL."
+    "- If the provided facts do not contain the answer: output NULL."
 )
 
 

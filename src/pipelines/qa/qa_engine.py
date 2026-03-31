@@ -181,6 +181,7 @@ class QAEngine:
 
         # 3. Score
         scoring = self._scoring_stage.run(query, retrieval, extraction)
+        selected_ids = {q.id for q in scoring.selected_quads}
 
         # 4. Format for bot (/facts, /graph)
         results = []
@@ -190,7 +191,8 @@ class QAEngine:
                 'text': QuadrupletCreator.stringify(r.quad)[1],
                 'confidence': r.conf,
                 'temporal_score': f"{r.tp:.2f} (Logit: {r.tl:.2f})" if r.tl != float('-inf') else "None",
-                'semantic_score': f"{r.e5:.2f}"
+                'semantic_score': f"{r.e5:.2f}",
+                '_used_by_llm': r.quad.id in selected_ids
             })
 
         return results

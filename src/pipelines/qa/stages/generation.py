@@ -109,10 +109,10 @@ class GenerationStage:
             else:
                 answer_hint = 'ОТВЕТ (конкретное значение, число или краткая фраза из ФАКТОВ выше):'
 
-            time_ctx = str(retrieval.resolved_time) if retrieval.resolved_time else "не указан"
+            time_ctx_prompt = f"ВРЕМЕННОЙ КОНТЕКСТ: {retrieval.resolved_time}\n" if retrieval.resolved_time else ""
             user_msg = (
                 f"ВОПРОС: {question}\n"
-                f"ВРЕМЕННОЙ КОНТЕКСТ: {time_ctx}\n"
+                f"{time_ctx_prompt}"
                 f"ФАКТЫ:\n{ctx}\n"
                 f"{answer_hint}"
             )
