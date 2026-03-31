@@ -278,38 +278,64 @@ class HybridRetriever:
     # Vector candidates (ChromaDB ANN)
     # ------------------------------------------------------------------
 
+    # Temporal question prefixes to strip for a secondary focused search
+    _TEMPORAL_PREFIXES = (
+        'в каком году ', 'в каком году?', 'когда ', 'с какого года ', 'до какого года ',
+        'с какого ', 'до какого ', 'в каком ', 'с какого момента ', 'начиная с какого ',
+        'when ', 'in what year ', 'since when ', 'what year ',
+    )
+
+    @staticmethod
+    def _strip_temporal_prefix(question: str) -> str:
+        """Remove leading temporal question words to produce a factual phrase."""
+        q = question.strip().lower()
+        for prefix in HybridRetriever._TEMPORAL_PREFIXES:
+            if q.startswith(prefix):
+                return question.strip()[len(prefix):].strip(' ?')
+        return question
+
     def _get_vector_candidates(
         self, question: str, top_n: int = 50
     ) -> Tuple[List[Quadruplet], Dict[str, float]]:
         """
         ChromaDB ANN search on quadruplet embeddings.
+        For temporal questions also runs a second search with the question prefix
+        stripped (e.g. "Когда X составил Y" → also search "X составил Y") to
+        improve recall when the question word shifts the embedding.
         Returns (quadruplets, {quad_id -> e5_score}).
         ChromaDB 'ip' space: sim = 1.0 - distance (for normalised E5 vectors).
         """
         try:
             from ....db_drivers.vector_driver import VectorDBInstance
             embedder = self.kg_model.embeddings_struct.embedder
-            q_emb = embedder.encode_queries([question])[0]
 
             quad_db = self.kg_model.embeddings_struct.vectordbs.get('quadruplets')
             if quad_db is None:
                 return [], {}
 
-            raw_results = quad_db.retrieve(
-                query_instances=[VectorDBInstance(embedding=q_emb)],
-                n_results=top_n,
-                includes=['documents', 'metadatas']
-            )
-            if not raw_results:
-                return [], {}
+            # Build list of queries: primary + optional stripped version
+            queries = [question]
+            stripped = self._strip_temporal_prefix(question)
+            if stripped != question:
+                queries.append(stripped)
 
-            # Build t_id → score from ChromaDB results (vdb_inst is NOT a Quadruplet)
-            t_id_scores = {}
-            for dist, vdb_inst in raw_results[0]:
-                sim = max(0.0, min(1.0, 1.0 - float(dist)))
-                t_id = (vdb_inst.metadata or {}).get('t_id')
-                if t_id:
-                    t_id_scores[t_id] = sim
+            t_id_scores: Dict[str, float] = {}
+            for q_text in queries:
+                q_emb = embedder.encode_queries([q_text])[0]
+                raw_results = quad_db.retrieve(
+                    query_instances=[VectorDBInstance(embedding=q_emb)],
+                    n_results=top_n,
+                    includes=['documents', 'metadatas']
+                )
+                if not raw_results:
+                    continue
+                for dist, vdb_inst in raw_results[0]:
+                    sim = max(0.0, min(1.0, 1.0 - float(dist)))
+                    t_id = (vdb_inst.metadata or {}).get('t_id')
+                    if t_id:
+                        # Keep highest score across queries
+                        if t_id not in t_id_scores or sim > t_id_scores[t_id]:
+                            t_id_scores[t_id] = sim
 
             if not t_id_scores:
                 return [], {}
@@ -341,29 +367,9 @@ class HybridRetriever:
         embedder = self.kg_model.embeddings_struct.embedder
         q_emb = embedder.encode_queries([question])[0]
 
+        # Always use encode_passages for correct similarity — the relation-ID-based
+        # ChromaDB lookup used wrong IDs and could short-circuit with corrupt scores.
         scores = {}
-        try:
-            emb_struct = self.kg_model.embeddings_struct
-            if hasattr(emb_struct, 'vectordbs') and 'quadruplets' in emb_struct.vectordbs:
-                q_emb_norm = np.linalg.norm(q_emb)
-                rel_to_quads: dict = defaultdict(list)
-                for q in quads:
-                    rel_to_quads[q.relation.id].append(q)
-                instances = emb_struct.vectordbs['quadruplets'].read(
-                    list(rel_to_quads.keys()), includes=['embeddings'])
-                for inst in instances:
-                    if inst.embedding is None:
-                        continue
-                    emb = np.array(inst.embedding)
-                    score_val = float(max(0.0, np.dot(q_emb, emb) / (q_emb_norm * np.linalg.norm(emb) + 1e-9)))
-                    for q in rel_to_quads.get(inst.id, []):
-                        scores[q.id] = score_val
-                if scores:
-                    return scores
-        except Exception:
-            pass
-
-        # Fallback: encode_passages
         texts = [QuadrupletCreator.stringify(q)[1] for q in quads]
         embs = embedder.encode_passages(texts)
         for q, emb in zip(quads, embs):

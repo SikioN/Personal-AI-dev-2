@@ -109,17 +109,18 @@ class GenerationStage:
             else:
                 answer_hint = 'ОТВЕТ (конкретное значение, число или краткая фраза из ФАКТОВ выше):'
 
+            time_ctx = str(retrieval.resolved_time) if retrieval.resolved_time else "не указан"
             user_msg = (
                 f"ВОПРОС: {question}\n"
-                f"ВРЕМЕННОЙ КОНТЕКСТ: {retrieval.resolved_time}\n"
+                f"ВРЕМЕННОЙ КОНТЕКСТ: {time_ctx}\n"
                 f"ФАКТЫ:\n{ctx}\n"
                 f"{answer_hint}"
             )
 
             raw_ans = self.llm.generate(user_msg, system=self.config.anon_system_prompt)
 
+            print(f"[GEN] Q={question!r} | raw={raw_ans!r}")
             if hasattr(self.config, 'debug') and self.config.debug:
-                print(f"  [GEN] raw_llm_output={raw_ans!r}")
                 print(f"  [GEN] context_used (lines)={len(ctx.splitlines())}")
 
             if not raw_ans:
