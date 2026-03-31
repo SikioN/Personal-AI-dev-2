@@ -119,13 +119,6 @@ class ScoringStage:
             and max(raw_logits) > self.config.tcomplex_threshold
         )
 
-        # P2: min-max normalise TComplEx logits
-        if use_tcomplex and raw_logits:
-            lo, hi = min(raw_logits), max(raw_logits)
-            rng = hi - lo if hi != lo else 1.0
-        else:
-            lo = hi = rng = 1.0
-
         scored: List[ScoredResult] = []
         for quad in candidates:
             e5 = e5_scores.get(quad.id, 0.0)
@@ -133,8 +126,11 @@ class ScoringStage:
             tp = 0.0
 
             if use_tcomplex and quad.id in tcomplex_map:
-                # min-max normalise instead of raw sigmoid
-                tp = (tcomplex_map[quad.id] - lo) / rng
+                # Use calibrated sigmoid probability instead of min-max normalization.
+                # Min-max caused random garbage logits (local entities have no Wikidata IDs)
+                # to be stretched so the max always became tp=1.0, drowning out E5 signal.
+                # Sigmoid keeps tp in a meaningful [0,1] range proportional to actual logit.
+                tp = _sigmoid(tcomplex_map[quad.id])
                 conf = (1.0 - alpha) * e5 + alpha * tp
             else:
                 conf = e5
