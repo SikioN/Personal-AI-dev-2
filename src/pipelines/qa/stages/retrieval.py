@@ -588,19 +588,43 @@ class HybridRetriever:
                 unique_candidates.append(q)
                 seen2.add(q.id)
 
-        # Keyword boost: if the question contains specific numbers/percentages,
-        # any fact whose stringified text contains ALL of them gets score 0.97.
-        # This guarantees facts like "53%" or "30%" reach the LLM context even
-        # when E5 embedding similarity is unexpectedly low.
+        # Keyword boost: guarantee that facts matching key terms from the question
+        # always surface into top-12, even when E5 embedding similarity is low.
         _stripped_q = self._strip_temporal_prefix(question)
+
+        # 1) Numerical boost: percentages or financial values (NOT bare years —
+        #    "2024" is too common and would spuriously boost unrelated facts).
         _key_nums = set(re.findall(r'\d+(?:[,\.]\d+)?\s*%', _stripped_q))
         if not _key_nums:
-            # Fallback: 2+ digit standalone numbers (e.g. "53", "30")
-            _key_nums = set(re.findall(r'(?<!\d)\d{2,}(?!\d)', _stripped_q))
-        if _key_nums:
+            # Also match numbers explicitly followed by financial units
+            _key_nums = set(re.findall(
+                r'\d+(?:[,\.]\d+)?\s*(?:млрд|трлн|млн|тыс|руб\.?)', _stripped_q
+            ))
+
+        # 2) Text keyword boost: significant Russian content words (5+ chars)
+        #    that are specific enough to identify the target fact.
+        #    Excludes entity names, stop-words, and overly common terms.
+        _common_ru = {
+            'сколько', 'когда', 'каком', 'какой', 'какая', 'будет', 'этого',
+            'которые', 'благодаря', 'составляет', 'является', 'также',
+            'сбере', 'сбера', 'сберу', 'имеет', 'каких', 'году', 'годом',
+            'количество', 'среднее', 'значение', 'данные',
+        }
+        _key_words = set(
+            w.lower() for w in re.findall(r'[а-яёА-ЯЁ]{5,}', _stripped_q)
+            if w.lower() not in _common_ru
+        )
+
+        if _key_nums or len(_key_words) >= 2:
             for cand in unique_candidates:
                 _, cand_text = QuadrupletCreator.stringify(cand)
-                if all(n in cand_text for n in _key_nums):
+                cand_lower = cand_text.lower()
+                # Numerical match: ALL key numbers present in fact text
+                nums_match = bool(_key_nums) and all(n in cand_text for n in _key_nums)
+                # Text match: at least 2 specific words from question found in fact
+                words_hit = sum(1 for w in _key_words if w in cand_lower)
+                words_match = len(_key_words) >= 2 and words_hit >= 2
+                if nums_match or words_match:
                     old = candidate_e5_scores.get(cand.id, 0.0)
                     candidate_e5_scores[cand.id] = max(old, 0.97)
 
