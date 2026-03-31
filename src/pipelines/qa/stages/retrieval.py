@@ -280,7 +280,8 @@ class HybridRetriever:
 
     # Temporal question prefixes to strip for a secondary focused search
     _TEMPORAL_PREFIXES = (
-        'в каком году ', 'в каком году?', 'когда ', 'с какого года ', 'до какого года ',
+        'в каком году в ', 'в каком году ',  # longer pattern first
+        'в каком году?', 'когда ', 'с какого года ', 'до какого года ',
         'с какого ', 'до какого ', 'в каком ', 'с какого момента ', 'начиная с какого ',
         'when ', 'in what year ', 'since when ', 'what year ',
     )
@@ -574,8 +575,10 @@ class HybridRetriever:
         graph_only = [q for q in unique_graph if q.id not in merged_ids]
         all_candidates = vector_quads + graph_only
 
-        # E5 scores for graph-only candidates
-        graph_scores = self._get_e5_for_graph_candidates(question, graph_only)
+        # E5 scores for graph-only candidates — use stripped question so temporal
+        # prefixes like "Когда"/"В каком году" don't shift the embedding away from facts.
+        _stripped_q = self._strip_temporal_prefix(question)
+        graph_scores = self._get_e5_for_graph_candidates(_stripped_q, graph_only)
         candidate_e5_scores = {**vector_scores, **graph_scores}
 
         # Final dedup
