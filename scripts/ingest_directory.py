@@ -363,6 +363,74 @@ def main() -> None:
     print()
 
 
+def _run_tcomplex_from_scratch(tkbc_dir: str, ckpt_out: str, args, gpu_profile: dict, device) -> None:
+    """Initialize and train a brand-new TComplEx when no checkpoint exists yet."""
+    import pickle
+    import numpy as np
+    from src.kg_model.temporal.tkbc_models import TComplEx
+    from src.kg_model.temporal.temporal_model import TemporalScorer
+
+    train_path = os.path.join(tkbc_dir, 'train.pickle')
+    if not os.path.exists(train_path):
+        _warn(f"train.pickle not found in {tkbc_dir} — cannot train from scratch, skipping")
+        return
+
+    with open(train_path, 'rb') as fh:
+        train_data = pickle.load(fh)
+
+    if len(train_data) == 0:
+        _warn("train.pickle is empty — no temporal facts to train on, skipping")
+        return
+
+    with open(os.path.join(tkbc_dir, 'ent_id'), 'rb') as fh: ent_id = pickle.load(fh)
+    with open(os.path.join(tkbc_dir, 'rel_id'), 'rb') as fh: rel_id = pickle.load(fh)
+    with open(os.path.join(tkbc_dir, 'ts_id'),  'rb') as fh: ts_id  = pickle.load(fh)
+
+    n_ent = len(ent_id)
+    n_rel = len(rel_id)
+    n_ts  = len(ts_id)
+    rank  = 128  # default for from-scratch; can be tuned via env var
+    sizes = (n_ent, n_rel * 2, n_ent, n_ts)
+
+    from src.kg_model.temporal.tkbc_models import TComplEx
+    model_obj = TComplEx(sizes, rank, no_time_emb=False).to(device)
+    _ok(f"TComplEx initialized from scratch: ent={n_ent} rel={n_rel} ts={n_ts} rank={rank}")
+
+    scorer = object.__new__(TemporalScorer)
+    scorer.device          = str(device)
+    scorer.data_path       = str(tkbc_dir)
+    scorer.ent_id          = ent_id
+    scorer.rel_id          = rel_id
+    scorer.ts_id           = ts_id
+    scorer.num_entities    = n_ent
+    scorer.num_relations   = n_rel
+    scorer.num_timestamps  = n_ts
+    scorer.model           = model_obj
+
+    use_amp  = not args.no_amp and gpu_profile.get('amp') is not None
+    num_gpus = gpu_profile.get('num_gpus') if gpu_profile['is_gpu'] else None
+    if num_gpus == 0:
+        num_gpus = None
+
+    _ok(f"Training rows: {len(train_data):,}  epochs={args.epochs}"
+        f"  lr={args.lr}  AMP={use_amp}  GPUs={num_gpus or 'auto'}")
+
+    t0 = time.time()
+    scorer.finetune(
+        train_data=train_data,
+        epochs=args.epochs,
+        batch_size=None,
+        lr=args.lr,
+        num_gpus=num_gpus,
+        use_amp=use_amp,
+    )
+    elapsed = time.time() - t0
+
+    Path(ckpt_out).parent.mkdir(parents=True, exist_ok=True)
+    scorer.save(ckpt_out)
+    _ok(f"From-scratch training done in {elapsed:.0f}s — checkpoint saved: {ckpt_out}")
+
+
 def _run_tcomplex_retrain(tkbc_dir: str | None, args, gpu_profile: dict) -> None:
     """Run TComplEx finetune with GPU-adaptive settings."""
     if not tkbc_dir:
@@ -387,11 +455,15 @@ def _run_tcomplex_retrain(tkbc_dir: str | None, args, gpu_profile: dict) -> None
         'TCOMPLEX_CHECKPOINT',
         str(Path(__file__).parent.parent / 'models' / 'cronkgqa' / 'tcomplex.ckpt'),
     )
-    if not os.path.exists(ckpt):
-        _warn(f"TComplEx checkpoint not found: {ckpt} — skipping")
-        return
 
     device = get_device(verbose=False)
+
+    if not os.path.exists(ckpt):
+        # First-time run: no checkpoint yet — train from scratch using existing pickles
+        _ok(f"No checkpoint found at {ckpt} — training TComplEx from scratch")
+        _run_tcomplex_from_scratch(tkbc_dir, ckpt, args, gpu_profile, device)
+        return
+
     _ok(f"Loading TComplEx from {ckpt}  (device={device})")
     scorer = TemporalScorer(checkpoint_path=ckpt, device=device)
 

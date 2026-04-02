@@ -9,7 +9,7 @@ cd "$SCRIPT_DIR"
 BUILD_KG=false
 REPROCESS=false
 CLEAN=false
-NO_WIKIDATA=false
+NO_WIKIDATA=true   # default: build KG from documents only, no Wikidata needed
 for arg in "$@"; do
     [[ "$arg" == "--build-kg" ]]     && BUILD_KG=true
     [[ "$arg" == "--reprocess" ]]    && REPROCESS=true

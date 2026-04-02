@@ -421,17 +421,30 @@ class TemporalKGIngester:
         ts_id_path    = os.path.join(tkbc_dir, "ts_id")
         train_path    = os.path.join(tkbc_dir, "train.pickle")
 
-        # Load all pickles atomically (abort if any is missing)
-        try:
-            with open(ent_id_path,  "rb") as f: ent_id  = pickle.load(f)
-            with open(rel_id_path,  "rb") as f: rel_id  = pickle.load(f)
-            with open(ts_id_path,   "rb") as f: ts_id   = pickle.load(f)
-            with open(train_path,   "rb") as f: train   = pickle.load(f)
-        except (FileNotFoundError, pickle.UnpicklingError) as exc:
-            logger.error(
-                "[TemporalKGIngester] Could not load tkbc pickles from %s: %s", tkbc_dir, exc
+        # Load all pickles — on first run (no Wikidata), initialize empty structures
+        pickles_exist = all(
+            os.path.exists(p) for p in (ent_id_path, rel_id_path, ts_id_path, train_path)
+        )
+        if pickles_exist:
+            try:
+                with open(ent_id_path,  "rb") as f: ent_id  = pickle.load(f)
+                with open(rel_id_path,  "rb") as f: rel_id  = pickle.load(f)
+                with open(ts_id_path,   "rb") as f: ts_id   = pickle.load(f)
+                with open(train_path,   "rb") as f: train   = pickle.load(f)
+            except (FileNotFoundError, pickle.UnpicklingError) as exc:
+                logger.error(
+                    "[TemporalKGIngester] Could not load tkbc pickles from %s: %s", tkbc_dir, exc
+                )
+                return False
+        else:
+            logger.info(
+                "[TemporalKGIngester] tkbc pickles not found in %s — initializing from scratch.", tkbc_dir
             )
-            return False
+            os.makedirs(tkbc_dir, exist_ok=True)
+            ent_id: dict = {}
+            rel_id: dict = {}
+            ts_id:  dict = {}
+            train = np.empty((0, 5), dtype=np.int64)
 
         new_rows: List[List[int]] = []
 
