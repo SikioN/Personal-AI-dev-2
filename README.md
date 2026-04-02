@@ -201,7 +201,7 @@ cp .env.example .env
 | `CHROMA_NODES_PATH` | `data/graph_structures/vectorized_nodes/default` | **Да** | ChromaDB: индекс узлов |
 | `CHROMA_QUADS_PATH` | `data/graph_structures/vectorized_quadruplets/default` | **Да** | ChromaDB: индекс квадруплетов |
 | `TCOMPLEX_CHECKPOINT` | `models/cronkgqa/tcomplex.ckpt` | Нет | Чекпоинт TComplEx |
-| `TCOMPLEX_DATA_PATH` | `wikidata_big/kg/tkbc_processed_data/wikidata_big/` | Нет | Pickle-файлы TComplEx |
+| `TCOMPLEX_DATA_PATH` | `data/local_tcomplex/` (без Wikidata) | Нет | Pickle-файлы TComplEx (ent_id, rel_id, ts_id, train.pickle) |
 | `EXTRACT_DATA_DIR` | `extract_data` | Нет | Кеш реестра сущностей и обработанных файлов |
 | `INGEST_STATS_PATH` | `data/ingest_stats.json` | Нет | Файл статистики ингестии |
 | `INMEMORY_STASH_PATH` | `data/inmemory_stash.json` | Нет | Stash-файл для in-memory режима |
@@ -266,7 +266,7 @@ CHROMA_NODES_PATH=/srv/personal-ai/data/graph_structures/vectorized_nodes/defaul
 CHROMA_QUADS_PATH=/srv/personal-ai/data/graph_structures/vectorized_quadruplets/default
 FINETUNED_MODEL_PATH=/srv/personal-ai/models/e5
 TCOMPLEX_CHECKPOINT=/srv/personal-ai/models/cronkgqa/tcomplex.ckpt
-TCOMPLEX_DATA_PATH=/srv/personal-ai/wikidata_big/kg/tkbc_processed_data/wikidata_big
+TCOMPLEX_DATA_PATH=/srv/personal-ai/data/local_tcomplex
 ```
 
 #### Пример конфигурации для in-memory (разработка)

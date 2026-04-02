@@ -238,7 +238,11 @@ fi
 if $BUILD_KG; then
     echo -e "\n${BOLD}[9] Building KG (extract → KuzuDB + ChromaDB + TComplEx)${NC}"
     INGEST_DIR="${INGEST_DIR:-extract/new_docs}"
-    TKBC_DIR="${TCOMPLEX_DATA_PATH:-wikidata_big/kg/tkbc_processed_data/wikidata_big}"
+    if $NO_WIKIDATA; then
+        TKBC_DIR="${TCOMPLEX_DATA_PATH:-data/local_tcomplex}"
+    else
+        TKBC_DIR="${TCOMPLEX_DATA_PATH:-wikidata_big/kg/tkbc_processed_data/wikidata_big}"
+    fi
 
     # ── --clean: удалить существующие данные KG ──────────────────────────────
     if $CLEAN; then
