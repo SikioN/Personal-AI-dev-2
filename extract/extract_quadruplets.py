@@ -61,7 +61,7 @@ try:
 except ImportError:
     _natasha_available = False
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(message)s")
+logging.basicConfig(handlers=[logging.NullHandler()])  # real setup in main()
 log = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────
@@ -437,7 +437,7 @@ def normalize_names(names: list[str]) -> dict[str, str]:
             mapping[n] = canon
 
     merged = sum(1 for v, c in mapping.items() if v != c)
-    print(f"  Нормализация: {merged} вариантов смержено из {len(mapping)}")
+    tqdm.write(f"  Нормализация: {merged} вариантов смержено из {len(mapping)}")
     return mapping
 
 
@@ -515,6 +515,19 @@ def main():
         sys.exit(0)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Route all logging to a file so tqdm progress bar is not interrupted.
+    # Worker threads (httpx/openai HTTP logs) write to the file, not stderr.
+    _log_file = OUTPUT_DIR / "extraction.log"
+    _fh = logging.FileHandler(_log_file, encoding="utf-8")
+    _fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s | %(message)s"))
+    logging.getLogger().handlers.clear()
+    logging.getLogger().addHandler(_fh)
+    logging.getLogger().setLevel(logging.DEBUG if args.debug else logging.INFO)
+    for _noisy in ("httpx", "httpcore", "openai", "urllib3"):
+        logging.getLogger(_noisy).setLevel(logging.WARNING)
+    tqdm.write(f"  Логи → {_log_file}")
+
     _load_custom_registry()
     _load_processed_manifest()
 
@@ -590,8 +603,8 @@ def main():
         )
 
         elapsed_doc = time.monotonic() - doc_start
-        print(f"  {doc_name}: извлечено {len(raw_quads)} квадруплетов за {elapsed_doc:.1f}s"
-              f"  (токены: {_token_stats['total']:,})")
+        tqdm.write(f"  {doc_name}: извлечено {len(raw_quads)} квадруплетов за {elapsed_doc:.1f}s"
+                   f"  (токены: {_token_stats['total']:,})")
 
         all_names = (
             [str(q.get("s", "")) for q in raw_quads] +
@@ -624,7 +637,7 @@ def main():
             eta = int(elapsed / done * left)
             h, rem = divmod(eta, 3600)
             m, s   = divmod(rem, 60)
-            print(f"  ETA: осталось {left} doc(s) — ~{h:02d}:{m:02d}:{s:02d}")
+            tqdm.write(f"  ETA: осталось {left} doc(s) — ~{h:02d}:{m:02d}:{s:02d}")
 
     total_sec = int(time.monotonic() - start_total)
     h, rem = divmod(total_sec, 3600)
