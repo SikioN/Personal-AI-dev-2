@@ -57,16 +57,18 @@ cp /path/to/your/documents/* extract/new_docs/
 bash setup.sh --build-kg
 ```
 
+> `--build-kg` использует `--no-wikidata` по умолчанию — граф строится только из ваших документов, привязка к Wikidata не нужна. TComplEx обучается с нуля автоматически.
+
 > Для повторной пересборки (если файлы уже обрабатывались) — остановите бота и добавьте `--reprocess`:
 > ```bash
 > pkill -f "bot.py\|run_db"
 > bash setup.sh --build-kg --reprocess
 > ```
 
-> Для полной пересборки KG **только из документов** (без данных Wikidata) — удалить старый граф и начать с нуля:
+> Для полной пересборки KG с нуля (удалить старый граф):
 > ```bash
 > pkill -f "bot.py\|run_db"
-> bash setup.sh --build-kg --clean --no-wikidata --reprocess
+> bash setup.sh --build-kg --clean --reprocess
 > ```
 
 ```bash
@@ -75,7 +77,7 @@ bash run_db.sh
 
 **1.** Клонирование репозитория и копирование шаблона конфигурации.
 **2.** Заполнить `.env`: `TELEGRAM_BOT_TOKEN`, `LLM_BACKEND` + API-ключ, пути к БД и моделям.
-**3.** Разместить документы (PDF/DOCX/PPTX/TXT) в `extract/new_docs/`. `setup.sh --build-kg` создаёт окружение, скачивает E5, строит граф из документов и обучает TComplEx.
+**3.** Разместить документы (PDF/DOCX/PPTX/TXT) в `extract/new_docs/`. `setup.sh --build-kg` создаёт окружение, скачивает E5, строит граф из документов и обучает TComplEx с нуля.
 **4.** Запустить бота в production-режиме (KuzuDB + ChromaDB).
 
 > Подробные инструкции по каждому шагу — см. раздел [Развёртывание](#развёртывание).
@@ -502,20 +504,42 @@ sudo systemctl restart personal-ai-bot   # systemd
 
 Скрипт принимает директорию, параллельно обрабатывает все файлы (PDF/DOCX/PPTX/TXT), добавляет извлечённые факты в KuzuDB + ChromaDB и запускает переобучение TComplEx.
 
-### Запуск
+**При первом запуске** (чекпоинт TComplEx ещё не существует) скрипт автоматически обучает модель с нуля — никакой Wikidata или предобученных весов не нужно. При последующих запусках — дообучает существующий чекпоинт.
+
+### Запуск на новых данных (первый раз — с нуля)
 
 ```bash
 source .venv/bin/activate
 
+# Шаг 1: построить пустой граф (один раз)
+bash setup.sh --build-kg
+
+# Шаг 2: загрузить документы → KuzuDB + ChromaDB + обучить TComplEx с нуля
 python scripts/ingest_directory.py \
-    --dir /path/to/documents \
-    --tkbc-dir wikidata_big/kg/tkbc_processed_data/wikidata_big/
+    --dir extract/new_docs \
+    --tkbc-dir data/local_tcomplex/
 ```
 
-Если `TCOMPLEX_DATA_PATH` задан в `.env`, аргумент `--tkbc-dir` можно опустить:
+После этого в `data/local_tcomplex/` появятся `ent_id`, `rel_id`, `ts_id`, `train.pickle`, а чекпоинт будет сохранён по пути `TCOMPLEX_CHECKPOINT` из `.env` (по умолчанию `models/cronkgqa/tcomplex.ckpt`).
+
+### Добавление новых документов (дообучение)
 
 ```bash
-python scripts/ingest_directory.py --dir /path/to/documents
+source .venv/bin/activate
+
+python scripts/ingest_directory.py --dir /path/to/new_documents
+```
+
+Если `TCOMPLEX_DATA_PATH` задан в `.env`, аргумент `--tkbc-dir` можно опустить. Уже обработанные файлы пропускаются автоматически.
+
+### Полный пайплайн (справка)
+
+```bash
+python scripts/ingest_directory.py \
+    --dir /path/to/documents \
+    --tkbc-dir data/local_tcomplex/ \
+    --epochs 100 \
+    --lr 1e-3
 ```
 
 ### Параметры
@@ -554,7 +578,7 @@ python scripts/ingest_directory.py --dir /path/to/documents
 
 Файлы с неподдерживаемым расширением (`.xlsx`, `.json`, `.html` и т.д.) пропускаются с предупреждением — обработка остальных продолжается. Уже обработанные файлы пропускаются автоматически (кеш в `extract_data/processed_files.json`). Для принудительной повторной обработки используйте `--reprocess`.
 
-### Пример вывода
+### Пример вывода (первый запуск — обучение с нуля)
 
 ```
 ====  ingest_directory.py  ====
@@ -576,6 +600,17 @@ python scripts/ingest_directory.py --dir /path/to/documents
   [OK]  Saved 298 facts  (14s)
 
 [3/3] TComplEx retrain
+  [OK]  No checkpoint found — training TComplEx from scratch
+  [OK]  TComplEx initialized from scratch: ent=1240 rel=87 ts=12 rank=128
+  [OK]  Training rows: 298  epochs=50  lr=0.001  AMP=True
+  [OK]  From-scratch training done in 47s — checkpoint saved: models/cronkgqa/tcomplex.ckpt
+```
+
+### Пример вывода (повторный запуск — дообучение)
+
+```
+[3/3] TComplEx retrain
+  [OK]  Loading TComplEx from models/cronkgqa/tcomplex.ckpt  (device=cuda:0)
   [OK]  Training rows: 3,104,512  epochs=50  lr=0.001  AMP=True
   [OK]  Retrain done in 183s — checkpoint saved
 ```
@@ -592,30 +627,47 @@ TComplEx — темпоральный скорер, присваивающий �
 - Заметное снижение качества ответов на темпоральные вопросы
 - После импорта нового датасета документов
 
-### Команда переобучения
+### Команда дообучения (существующий чекпоинт)
 
 ```bash
 source .venv/bin/activate
 
 # Результат сохраняется по TCOMPLEX_CHECKPOINT из .env:
 python scripts/retrain_tcomplex.py \
-    --tkbc-dir wikidata_big/kg/tkbc_processed_data/wikidata_big/ \
+    --tkbc-dir data/local_tcomplex/ \
     --epochs 50 \
     --lr 1e-3
 
 # Явно указать путь для сохранения чекпоинта:
 python scripts/retrain_tcomplex.py \
-    --tkbc-dir wikidata_big/kg/tkbc_processed_data/wikidata_big/ \
+    --tkbc-dir data/local_tcomplex/ \
     --checkpoint-out models/cronkgqa/tcomplex_v2.ckpt \
     --epochs 50
 ```
+
+### Обучение с нуля (нет существующего чекпоинта)
+
+Используйте флаг `--from-scratch` если чекпоинт ещё не создан и нужно обучить модель вручную из JSONL-файла квадруплетов:
+
+```bash
+# После extract_quadruplets.py или ingest_directory.py
+python scripts/retrain_tcomplex.py \
+    --from-scratch \
+    --jsonl extract_data/quadruplets.jsonl \
+    --tkbc-dir data/local_tcomplex/ \
+    --rank 128 \
+    --epochs 100 \
+    --checkpoint-out models/cronkgqa/tcomplex.ckpt
+```
+
+> **Примечание:** `ingest_directory.py` делает это автоматически — запускать `--from-scratch` вручную нужно только если вы хотите обучить модель отдельно от процесса инжеста.
 
 Приоритет пути для сохранения:
 1. `--checkpoint-out` (явный аргумент)
 2. `TCOMPLEX_CHECKPOINT` из `.env`
 3. `models/cronkgqa/tcomplex.ckpt` (дефолт)
 
-Что происходит при переобучении:
+Что происходит при дообучении:
 1. Загружается существующий чекпоинт (warm start — не с нуля)
 2. Модель дообучается на обновлённом `train.pickle`
 3. Новый чекпоинт сохраняется
