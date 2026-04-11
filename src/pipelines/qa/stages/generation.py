@@ -151,32 +151,36 @@ class GenerationStage:
                 t = text.strip().lower()
                 return not t or any(tok in t for tok in _null_tokens)
 
+            # Extract answer from <answer>…</answer> tags (CoT output isolation).
+            # If the LLM did not emit tags, fall back to the raw stripped output.
+            _tag_match = re.search(r'<answer>(.*?)</answer>', raw_ans, re.IGNORECASE | re.DOTALL)
+            extracted = _tag_match.group(1).strip() if _tag_match else raw_ans.strip()
+
             if answer_type == 'year' or q_type == 'simple_time':
-                if _is_null(raw_ans):
+                if _is_null(extracted):
                     answer = 'Unknown'
                 else:
-                    year = self._extract_year(raw_ans)
+                    year = self._extract_year(extracted)
                     if year:
                         answer = year
                     else:
-                        answer = raw_ans.strip() or 'Unknown'
+                        answer = extracted or 'Unknown'
             else:
-                stripped = raw_ans.strip()
-                if _is_null(stripped):
+                if _is_null(extracted):
                     answer = 'Unknown'
                 else:
                     # If LLM returned a raw Wikidata Q-ID (legacy fallback), decode it
-                    qid = self._decode_qid(stripped)
+                    qid = self._decode_qid(extracted)
                     if qid:
                         label = self.mapper.get_label_with_id(qid)
                         if label and not self._ID_RE.match(label):
                             answer = label
                         else:
-                            answer = stripped
+                            answer = extracted
                     else:
-                        answer = stripped
+                        answer = extracted
 
-            decoded_qid = self._decode_qid(raw_ans)
+            decoded_qid = self._decode_qid(extracted)
             return GenerationResult(
                 answer=answer,
                 raw_llm_output=raw_ans,

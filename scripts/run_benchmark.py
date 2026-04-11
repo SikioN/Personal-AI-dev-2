@@ -66,6 +66,13 @@ def main():
             top3 = []
 
         # Auto-label
+        import re as _re
+
+        def _normalize_number(s: str) -> str:
+            """Strip %, spaces (including thousands separators), normalize comma→dot."""
+            s = _re.sub(r'[%\s]', '', s.strip().lower())
+            return s.replace(',', '.')
+
         exp_l = expected.strip().lower()
         got_l = str(answer).strip().lower()
         if got_l in ('unknown', 'null', 'none', ''):
@@ -73,9 +80,9 @@ def main():
         elif exp_l in got_l or got_l in exp_l:
             label = 'correct'
         else:
-            exp_num = exp_l.replace(' ', '').replace(',', '.')
-            got_num = got_l.replace(' ', '').replace(',', '.')
-            label = 'correct' if exp_num and exp_num in got_num else 'wrong'
+            exp_n = _normalize_number(expected)
+            got_n = _normalize_number(str(answer))
+            label = 'correct' if exp_n and got_n and (exp_n in got_n or got_n in exp_n) else 'wrong'
 
         icon = '✓' if label == 'correct' else ('?' if label == 'unknown' else '✗')
         print(f'       {icon} Expected: {expected!r:30s}  Got: {str(answer)!r:30s}  [{confidence:.2f}]')

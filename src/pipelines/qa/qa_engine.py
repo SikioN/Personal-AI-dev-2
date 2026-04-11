@@ -266,9 +266,9 @@ class QAEngine:
                 "Answer ONLY based on the provided FACTS in the same language as the question. "
                 "Step 1: Identify what value the question asks for. "
                 "Step 2: Find the fact whose Subject and Relation best match the question. "
-                "Step 3: Extract the exact value from that fact. "
-                "Output ONLY the value (number, phrase, or year). "
-                "If truly not found after careful review: output NULL."
+                "Step 3: Output the exact value wrapped in <answer> tags. "
+                "Example: <answer>58%</answer> or <answer>2024</answer>. "
+                "If truly not found after careful review: <answer>NULL</answer>"
             )
             generation_retry = self._generation_stage.run(
                 question, fallback_quads, extraction, retrieval,
@@ -324,9 +324,9 @@ class QAEngine:
                 "Answer ONLY based on the provided FACTS in the same language as the question. "
                 "Step 1: Identify what value the question asks for. "
                 "Step 2: Find the fact whose Subject and Relation best match the question. "
-                "Step 3: Extract the exact value from that fact. "
-                "Output ONLY the value (number, phrase, or year). "
-                "If truly not found after careful review: output NULL."
+                "Step 3: Output the exact value wrapped in <answer> tags. "
+                "Example: <answer>58%</answer> or <answer>2024</answer>. "
+                "If truly not found after careful review: <answer>NULL</answer>"
             )
             generation_retry = self._generation_stage.run(
                 question, fallback_quads, extraction, retrieval,
