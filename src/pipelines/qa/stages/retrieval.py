@@ -319,6 +319,16 @@ class HybridRetriever:
             stripped = self._strip_temporal_prefix(question)
             if stripped != question:
                 queries.append(stripped)
+            # Fix C: second query without numbers for numeric questions
+            # Two-stage retrieval reduces false positives caused by numeric token overlap
+            # (e.g. "$50bn" in "GenAI pharma $50bn" matching SSD/storage facts)
+            import re as _re_fixc
+            q_no_nums = _re_fixc.sub(
+                r'\b\d+(?:[,\.]\d+)?\s*(?:%|млрд|трлн|млн|billion|trillion|million)?\b',
+                '', question
+            ).strip()
+            if q_no_nums != question and len(q_no_nums) > 10:
+                queries.append(q_no_nums)
 
             t_id_scores: Dict[str, float] = {}
             for q_text in queries:
@@ -636,7 +646,7 @@ class HybridRetriever:
                 # Text match: at least 2 specific words from question found in fact
                 words_hit = sum(1 for w in _key_words if w in cand_lower)
                 words_match = len(_key_words) >= 2 and words_hit >= 2
-                if nums_match or words_match:
+                if (nums_match and words_hit >= 1) or words_match:
                     old = candidate_e5_scores.get(cand.id, 0.0)
                     # Boost only if E5 already considers the fact somewhat relevant (>0.60).
                     # Avoids inflating unrelated facts that merely contain a matching number.

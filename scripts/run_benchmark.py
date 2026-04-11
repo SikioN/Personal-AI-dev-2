@@ -58,7 +58,7 @@ def main():
 
     df.columns = ['question', 'expected', 'source_file',
                   'context_location', 'context', 'bot_answer_old', 'correct_old']
-    df = df[['question', 'expected', 'source_file', 'correct_old']].dropna(subset=['question', 'expected'])
+    df = df[['question', 'expected', 'source_file']].dropna(subset=['question', 'expected'])
     df = df.reset_index(drop=True)
     print(f'Loaded {len(df)} questions from {args.excel}\n')
 
@@ -91,74 +91,17 @@ def main():
             confidence = 0.0
             top3 = []
 
-        # Auto-label
-        import re as _re
-
-        def _normalize_number(s: str) -> str:
-            """Strip %, spaces (including thousands separators), normalize comma→dot."""
-            s = _re.sub(r'[%\s]', '', s.strip().lower())
-            return s.replace(',', '.')
-
-        exp_l = expected.strip().lower()
-        got_l = str(answer).strip().lower()
-        if got_l in ('unknown', 'null', 'none', ''):
-            label = 'unknown'
-        elif exp_l in got_l or got_l in exp_l:
-            label = 'correct'
-        else:
-            exp_n = _normalize_number(expected)
-            got_n = _normalize_number(str(answer))
-            label = 'correct' if exp_n and got_n and (exp_n in got_n or got_n in exp_n) else 'wrong'
-
-        icon = '✓' if label == 'correct' else ('?' if label == 'unknown' else '✗')
-        print(f'       {icon} Expected: {expected!r:30s}  Got: {str(answer)!r:30s}  [{confidence:.2f}]')
+        print(f'       Expected: {expected!r:30s}  Got: {str(answer)!r:30s}  [{confidence:.2f}]')
 
         results.append({
             'question': q,
             'expected': expected,
             'bot_answer': str(answer),
-            'label': label,
+            'label': '',
             'confidence': round(confidence, 3),
             'source_file': str(row['source_file']),
-            'correct_old': str(row.get('correct_old', '')),
             'top5_facts': ' | '.join(top3),
         })
-
-    # ── Summary ────────────────────────────────────────────────────────────────
-    print('\n' + '=' * 70)
-    n_correct = sum(1 for r in results if r['label'] == 'correct')
-    n_unknown = sum(1 for r in results if r['label'] == 'unknown')
-    n_wrong   = sum(1 for r in results if r['label'] == 'wrong')
-
-    print(f'Total     : {n}')
-    print(f'Correct   : {n_correct} ({n_correct/n*100:.1f}%)')
-    print(f'Unknown   : {n_unknown} ({n_unknown/n*100:.1f}%)')
-    print(f'Wrong     : {n_wrong   } ({n_wrong/n*100:.1f}%)')
-    print(f'Baseline  : 34.2%')
-    print(f'Delta     : {n_correct/n*100 - 34.2:+.1f}%')
-
-    conf_correct = [r['confidence'] for r in results if r['label'] == 'correct']
-    conf_wrong   = [r['confidence'] for r in results if r['label'] == 'wrong']
-    if conf_correct and conf_wrong:
-        avg_c = sum(conf_correct) / len(conf_correct)
-        avg_w = sum(conf_wrong)   / len(conf_wrong)
-        print(f'\nMean confidence — Correct: {avg_c:.3f}  |  Wrong: {avg_w:.3f}')
-        if avg_w > avg_c:
-            print('⚠ Miscalibration: higher confidence on wrong answers')
-        else:
-            print('✓ Calibration OK')
-
-    print('\n=== Unknown answers ===')
-    for r in results:
-        if r['label'] == 'unknown':
-            print(f"  Q: {r['question'][:70]}")
-            print(f"     Expected: {r['expected']}  |  {r['source_file'][:40]}")
-
-    print('\n=== Wrong answers ===')
-    for r in results:
-        if r['label'] == 'wrong':
-            print(f"  Q: {r['question'][:70]}")
-            print(f"     Expected: {r['expected']!r}  Got: {r['bot_answer']!r}  [{r['confidence']}]")
 
     # ── Save CSV ───────────────────────────────────────────────────────────────
     import csv
@@ -167,7 +110,6 @@ def main():
         writer.writeheader()
         writer.writerows(results)
     print(f'\nResults saved to {args.out}')
-    print('=' * 70)
 
 
 if __name__ == '__main__':

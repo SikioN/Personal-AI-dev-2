@@ -11,6 +11,7 @@ _ANON_SYS_DEFAULT = (
     "Rules:\n"
     "- Answer with a specific value, number, or short phrase from the chosen fact.\n"
     "- For year/date questions: output ONLY the year or range (e.g. '2024' or '2020 - 2024').\n"
+    "- If multiple facts have different numbers — pick the one whose SUBJECT and RELATION best match the question topic.\n"
     "- Do NOT use external knowledge.\n"
     "- If the provided facts do not contain the answer: output NULL."
 )
