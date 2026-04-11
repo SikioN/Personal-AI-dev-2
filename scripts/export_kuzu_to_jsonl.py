@@ -31,6 +31,18 @@ def main():
     conn = kuzu.Connection(db)
 
     out = []
+    # Build time node lookup: t_id -> (name, prop)
+    time_lookup = {}
+    try:
+        res = conn.execute("MATCH (t:time) RETURN t.str_id, t.name, t.prop")
+        while res.has_next():
+            row = res.get_next()
+            tid, tname, tprop = row
+            time_lookup[tid] = (tname or "", dict(tprop) if tprop else {})
+        print(f"  time nodes loaded: {len(time_lookup)}")
+    except Exception as e:
+        print(f"  [WARN] could not load time nodes: {e}")
+
     for rel_table in ("simple", "hyper_rel", "episodic_rel"):
         try:
             res = conn.execute(
@@ -41,9 +53,16 @@ def main():
             while res.has_next():
                 row = res.get_next()
                 s_id, r_id, r_name, t_id, r_prop, o_id = row
-                prop = dict(r_prop) if r_prop else {}
-                start = prop.get("start", "") or prop.get("year", "")
-                end   = prop.get("end", "") or start
+                # Try to get year from time node
+                t_name, t_prop = time_lookup.get(t_id, ("", {}))
+                start = (t_prop.get("start") or t_prop.get("year") or
+                         t_name or "").strip()
+                end   = (t_prop.get("end") or start).strip()
+                # Fallback: check relation prop
+                if not start:
+                    rp = dict(r_prop) if r_prop else {}
+                    start = rp.get("start", "") or rp.get("year", "")
+                    end   = rp.get("end", "") or start
                 out.append({
                     "s": {"id": s_id},
                     "r": {"id": r_id or r_name},
