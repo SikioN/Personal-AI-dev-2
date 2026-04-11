@@ -57,9 +57,10 @@ class GenerationStage:
                     return label
         return name or node.id or '?'
 
-    _MAX_CTX_CHARS = 6000  # conservative limit (~8k tokens)
+    _MAX_CTX_CHARS = 6000   # conservative limit (~8k tokens)
+    _MAX_CTX_CHARS_RETRY = 12000  # expanded limit for fallback retry pass
 
-    def _build_anon_ctx(self, quads: List[Quadruplet]) -> str:
+    def _build_anon_ctx(self, quads: List[Quadruplet], ctx_limit: int = _MAX_CTX_CHARS) -> str:
         """Build readable context from quadruplets for the LLM."""
         lines, seen = [], set()
         for q in quads:
@@ -71,11 +72,18 @@ class GenerationStage:
             if sig not in seen:
                 seen.add(sig)
                 source = (q.relation.prop or {}).get('source', '')
-                source_str = f" [Source: {source}]" if source else ""
+                if source:
+                    # Truncate long PDF filenames to avoid eating context budget
+                    short_src = source.replace('.pdf', '')[:30]
+                    if len(source) > 34:
+                        short_src += '...'
+                    source_str = f" [Source: {short_src}]"
+                else:
+                    source_str = ""
                 lines.append(f'- {s} → {r} → {o} (Year: {t}){source_str}')
         ctx = '\n'.join(lines)
-        if len(ctx) > self._MAX_CTX_CHARS:
-            ctx = ctx[:self._MAX_CTX_CHARS] + "\n... [context truncated]"
+        if len(ctx) > ctx_limit:
+            ctx = ctx[:ctx_limit] + "\n... [context truncated]"
         return ctx
 
     @staticmethod
@@ -100,9 +108,11 @@ class GenerationStage:
         extraction: "ExtractionResult",
         retrieval: "RetrievalResult",
         system_prompt_override: Optional[str] = None,
+        expand_ctx: bool = False,
     ) -> GenerationResult:
         try:
-            ctx = self._build_anon_ctx(selected_quads)
+            ctx_limit = self._MAX_CTX_CHARS_RETRY if expand_ctx else self._MAX_CTX_CHARS
+            ctx = self._build_anon_ctx(selected_quads, ctx_limit=ctx_limit)
 
             answer_type = extraction.answer_type
             q_type = extraction.q_type

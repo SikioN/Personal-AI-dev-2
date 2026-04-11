@@ -255,6 +255,30 @@ class QAEngine:
         generation = self._generation_stage.run(
             question, scoring.selected_quads, extraction, retrieval
         )
+
+        # Fallback retry: if Unknown, expand to top_k*2 facts and retry once
+        if generation.answer == 'Unknown' and len(scoring.all_scored) > len(scoring.selected_quads):
+            print('  [FALLBACK] Unknown on first pass — retrying with expanded context...')
+            fallback_quads = [r.quad for r in scoring.all_scored[:top_k * 2]]
+            _fallback_prompt = (
+                "You are a knowledge base QA system. "
+                "The answer IS present in the facts below — look carefully. "
+                "Answer ONLY based on the provided FACTS in the same language as the question. "
+                "Step 1: Identify what value the question asks for. "
+                "Step 2: Find the fact whose Subject and Relation best match the question. "
+                "Step 3: Extract the exact value from that fact. "
+                "Output ONLY the value (number, phrase, or year). "
+                "If truly not found after careful review: output NULL."
+            )
+            generation_retry = self._generation_stage.run(
+                question, fallback_quads, extraction, retrieval,
+                system_prompt_override=_fallback_prompt,
+                expand_ctx=True,
+            )
+            if generation_retry.answer and generation_retry.answer != 'Unknown':
+                print(f'  [FALLBACK] Retry succeeded: {generation_retry.answer!r}')
+                generation = generation_retry
+
         timings['generate'] = round(_time.time() - t_s, 2)
 
         answer = generation.answer
@@ -307,6 +331,7 @@ class QAEngine:
             generation_retry = self._generation_stage.run(
                 question, fallback_quads, extraction, retrieval,
                 system_prompt_override=_fallback_prompt,
+                expand_ctx=True,
             )
             if generation_retry.answer and generation_retry.answer != 'Unknown':
                 logger.info("[ask_full] fallback retry succeeded: %r", generation_retry.answer)
