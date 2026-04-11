@@ -57,9 +57,9 @@ def main():
         try:
             answer, ranked = engine.ask_full(q, top_k=args.top_k)
             confidence = ranked[0]['confidence'] if ranked else 0.0
-            top3 = [r['text'] for r in ranked[:3] if r.get('_used_by_llm')]
+            top3 = [r['text'] for r in ranked[:5] if r.get('_used_by_llm')]
             if not top3:
-                top3 = [r['text'] for r in ranked[:3]]
+                top3 = [r['text'] for r in ranked[:5]]
         except Exception as e:
             answer = f'ERROR: {e}'
             confidence = 0.0
@@ -95,7 +95,7 @@ def main():
             'confidence': round(confidence, 3),
             'source_file': str(row['source_file']),
             'correct_old': str(row.get('correct_old', '')),
-            'top3_facts': ' | '.join(top3),
+            'top5_facts': ' | '.join(top3),
         })
 
     # ── Summary ────────────────────────────────────────────────────────────────
