@@ -320,6 +320,14 @@ class HybridRetriever:
             if stripped != question:
                 queries.append(stripped)
 
+            # Dual-query: also search with numbers removed so that semantic context words
+            # (not digit tokens) drive the embedding similarity.  This surfaces facts whose
+            # Subject/Relation semantically matches the question topic even when their numbers
+            # differ from the question's numbers.
+            _q_no_nums = re.sub(r'\d+(?:[.,]\d+)?\s*[%]?\s*', '', stripped).strip()
+            if _q_no_nums and _q_no_nums != stripped and len(_q_no_nums) > 5:
+                queries.append(_q_no_nums)
+
             t_id_scores: Dict[str, float] = {}
             for q_text in queries:
                 q_emb = embedder.encode_queries([q_text])[0]
@@ -643,6 +651,56 @@ class HybridRetriever:
                     # Capped at 0.88 (not 0.97) so semantically strong facts (>0.88) can win.
                     if old > 0.60:
                         candidate_e5_scores[cand.id] = max(old, 0.88)
+
+        # Geographic entity boost/penalty: when the question names a specific country or region,
+        # strongly demote facts about OTHER named countries.  E5 often retrieves Switzerland facts
+        # for questions about China (and vice-versa) because the rest of the sentence is similar.
+        _GEO_MAP = {
+            'швейцар': ['китай', 'france', 'франц', 'germany', 'german', 'japan', 'индия', 'корея', 'бразил'],
+            'китай': ['швейцар', 'france', 'франц', 'germany', 'japan', 'индия', 'россия', 'сша', 'usa'],
+            'африк': ['европ', 'азия', 'китай', 'сша', 'usa', 'канад', 'австрал'],
+            'снг': ['европ', 'азия', 'китай', 'сша', 'usa', 'канад'],
+            'латинской америк': ['европ', 'азия', 'китай', 'сша', 'usa'],
+            'великобрита': ['китай', 'германи', 'france', 'франц', 'spain'],
+        }
+        _q_lower_geo = _stripped_q.lower()
+        for geo_key, wrong_geos in _GEO_MAP.items():
+            if geo_key in _q_lower_geo:
+                for cand in unique_candidates:
+                    _, cand_text = QuadrupletCreator.stringify(cand)
+                    cand_lower = cand_text.lower()
+                    if any(wg in cand_lower for wg in wrong_geos) and geo_key not in cand_lower:
+                        old = candidate_e5_scores.get(cand.id, 0.5)
+                        candidate_e5_scores[cand.id] = old * 0.50  # strong geo mismatch penalty
+                break
+
+        # Semantic context penalty: demote facts that match a key number but share NO semantic
+        # context words with the question.  E5 vector search gives high cosine similarity to
+        # facts that merely contain the same digit tokens ("58%" → "58 million users"), so
+        # without this penalty they rank above the semantically correct fact.
+        _SEMANTIC_STOP_PENALTY = {
+            'процент', 'процентов', 'миллионов', 'миллиардов', 'триллионов',
+            'долларов', 'рублей', 'более', 'менее', 'около', 'свыше',
+            'years', 'percent', 'million', 'billion', 'trillion', 'dollars',
+            'увеличение', 'снижение', 'является', 'составляет', 'данные',
+            'сколько', 'какой', 'какая', 'каков', 'каком', 'когда', 'чему',
+        }
+        _q_semantic_words = [
+            w.lower() for w in re.findall(r'[а-яёА-ЯЁa-zA-Z]{4,}', _stripped_q)
+            if w.lower() not in _SEMANTIC_STOP_PENALTY
+        ]
+        if _key_nums and _q_semantic_words:
+            for cand in unique_candidates:
+                _, cand_text = QuadrupletCreator.stringify(cand)
+                cand_lower = cand_text.lower()
+                nums_in_cand = any(
+                    n.strip().rstrip('%').strip() in cand_text for n in _key_nums
+                )
+                semantic_in_cand = any(w in cand_lower for w in _q_semantic_words)
+                if nums_in_cand and not semantic_in_cand:
+                    # Number matches but semantic context is absent — demote score
+                    old = candidate_e5_scores.get(cand.id, 0.5)
+                    candidate_e5_scores[cand.id] = old * 0.65
 
         # Adaptive search_k: sub-linear growth capped at n_unique (notebook-aligned)
         # time_join gets max(search_k, 20) below — unchanged
