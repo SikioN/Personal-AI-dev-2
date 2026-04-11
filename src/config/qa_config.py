@@ -30,7 +30,7 @@ class QAConfig:
     min_tl_count: int = 2
     confidence_gap: float = 0.20       # P3 gap-based selection threshold
     min_facts: int = 2
-    max_facts: int = 12
+    max_facts: int = 20
     search_k_floor: int = 15
     search_k_exp: float = 0.55
     tcomplex_alpha: float = 0.5
@@ -103,6 +103,8 @@ class QAConfig:
             cfg.tcomplex_data_path = os.environ['TCOMPLEX_DATA_PATH']
         if os.environ.get('TCOMPLEX_ALPHA'):
             cfg.tcomplex_alpha = float(os.environ['TCOMPLEX_ALPHA'])
+        if os.environ.get('QA_MAX_FACTS'):
+            cfg.max_facts = int(os.environ['QA_MAX_FACTS'])
         if not cfg.neo4j_password:
             import warnings
             warnings.warn("NEO4J_PASSWORD is not set. Set it via environment variable.", stacklevel=2)

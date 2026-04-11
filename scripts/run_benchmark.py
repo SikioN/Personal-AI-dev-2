@@ -20,7 +20,24 @@ def main():
     parser.add_argument('--excel', default='simple_questions_39_final_2025.xlsx')
     parser.add_argument('--top-k', type=int, default=12)
     parser.add_argument('--out', default='benchmark_results.csv')
+    # Path overrides for sandbox / benchmark DB
+    parser.add_argument('--kuzu-path',     default=None, help='Override KUZU_PATH')
+    parser.add_argument('--chroma-nodes',  default=None, help='Override CHROMA_NODES_PATH')
+    parser.add_argument('--chroma-quads',  default=None, help='Override CHROMA_QUADS_PATH')
+    parser.add_argument('--tcomplex-ckpt', default=None, help='Override TCOMPLEX_CHECKPOINT')
+    parser.add_argument('--tcomplex-data', default=None, help='Override TCOMPLEX_DATA_PATH')
+    parser.add_argument('--max-facts',     type=int, default=None,
+                        help='Max facts fed to LLM (overrides QAConfig.max_facts)')
     args = parser.parse_args()
+
+    # ── Apply path overrides BEFORE load_engine() ─────────────────────────────
+    # env must be set BEFORE load_engine() — QAConfig uses default_factory lambdas
+    if args.kuzu_path:     os.environ['KUZU_PATH']           = args.kuzu_path
+    if args.chroma_nodes:  os.environ['CHROMA_NODES_PATH']   = args.chroma_nodes
+    if args.chroma_quads:  os.environ['CHROMA_QUADS_PATH']   = args.chroma_quads
+    if args.tcomplex_ckpt: os.environ['TCOMPLEX_CHECKPOINT'] = args.tcomplex_ckpt
+    if args.tcomplex_data: os.environ['TCOMPLEX_DATA_PATH']  = args.tcomplex_data
+    if args.max_facts:     os.environ['QA_MAX_FACTS']        = str(args.max_facts)
 
     # ── Load engine ────────────────────────────────────────────────────────────
     print('Loading QA engine...')
