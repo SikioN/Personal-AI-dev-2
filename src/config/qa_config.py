@@ -34,8 +34,8 @@ class QAConfig:
     min_tl_count: int = 2
     confidence_gap: float = 0.20       # P3 gap-based selection threshold
     min_facts: int = 2
-    max_facts: int = 12
-    search_k_floor: int = 15
+    max_facts: int = 20
+    search_k_floor: int = 40
     search_k_exp: float = 0.55
     tcomplex_alpha: float = 0.5
 
