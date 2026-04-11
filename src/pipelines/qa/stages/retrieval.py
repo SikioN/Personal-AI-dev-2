@@ -601,18 +601,30 @@ class HybridRetriever:
                 r'\d+(?:[,\.]\d+)?\s*(?:млрд|трлн|млн|тыс|руб\.?)', _stripped_q
             ))
 
-        # 2) Text keyword boost: significant Russian content words (5+ chars)
-        #    that are specific enough to identify the target fact.
-        #    Excludes entity names, stop-words, and overly common terms.
+        # 1b) English financial units (for English-language source documents)
+        if not _key_nums:
+            _key_nums = set(re.findall(
+                r'\d+(?:[,\.]\d+)?\s*(?:billion|trillion|million|thousand|percent)',
+                _stripped_q, re.IGNORECASE
+            ))
+
+        # 2) Text keyword boost: significant content words (5+ chars), Russian and English.
+        #    Excludes stop-words and overly common terms.
         _common_ru = {
             'сколько', 'когда', 'каком', 'какой', 'какая', 'будет', 'этого',
             'которые', 'благодаря', 'составляет', 'является', 'также',
             'сбере', 'сбера', 'сберу', 'имеет', 'каких', 'году', 'годом',
             'количество', 'среднее', 'значение', 'данные',
         }
+        _common_en = {
+            'which', 'about', 'their', 'there', 'where', 'would', 'could',
+            'should', 'first', 'these', 'total', 'other', 'percent', 'billion',
+            'million', 'between', 'company', 'what', 'when', 'that', 'with',
+        }
+        _stop_words = _common_ru | _common_en
         _key_words = set(
-            w.lower() for w in re.findall(r'[а-яёА-ЯЁ]{5,}', _stripped_q)
-            if w.lower() not in _common_ru
+            w.lower() for w in re.findall(r'[а-яёА-ЯЁa-zA-Z]{5,}', _stripped_q)
+            if w.lower() not in _stop_words
         )
 
         if _key_nums or len(_key_words) >= 2:
@@ -626,7 +638,11 @@ class HybridRetriever:
                 words_match = len(_key_words) >= 2 and words_hit >= 2
                 if nums_match or words_match:
                     old = candidate_e5_scores.get(cand.id, 0.0)
-                    candidate_e5_scores[cand.id] = max(old, 0.97)
+                    # Boost only if E5 already considers the fact somewhat relevant (>0.60).
+                    # Avoids inflating unrelated facts that merely contain a matching number.
+                    # Capped at 0.88 (not 0.97) so semantically strong facts (>0.88) can win.
+                    if old > 0.60:
+                        candidate_e5_scores[cand.id] = max(old, 0.88)
 
         # Adaptive search_k: sub-linear growth capped at n_unique (notebook-aligned)
         # time_join gets max(search_k, 20) below — unchanged

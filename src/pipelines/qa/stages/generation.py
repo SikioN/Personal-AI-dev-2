@@ -70,7 +70,9 @@ class GenerationStage:
             sig = f'{s}|{r}|{o}|{t}'
             if sig not in seen:
                 seen.add(sig)
-                lines.append(f'- {s} → {r} → {o} (Year: {t})')
+                source = (q.relation.prop or {}).get('source', '')
+                source_str = f" [Source: {source}]" if source else ""
+                lines.append(f'- {s} → {r} → {o} (Year: {t}){source_str}')
         ctx = '\n'.join(lines)
         if len(ctx) > self._MAX_CTX_CHARS:
             ctx = ctx[:self._MAX_CTX_CHARS] + "\n... [context truncated]"
@@ -97,6 +99,7 @@ class GenerationStage:
         selected_quads: List[Quadruplet],
         extraction: "ExtractionResult",
         retrieval: "RetrievalResult",
+        system_prompt_override: Optional[str] = None,
     ) -> GenerationResult:
         try:
             ctx = self._build_anon_ctx(selected_quads)
@@ -117,7 +120,8 @@ class GenerationStage:
                 f"{answer_hint}"
             )
 
-            raw_ans = self.llm.generate(user_msg, system=self.config.anon_system_prompt)
+            system_prompt = system_prompt_override or self.config.anon_system_prompt
+            raw_ans = self.llm.generate(user_msg, system=system_prompt)
 
             print(f"[GEN] Q={question!r} | raw={raw_ans!r}")
             if hasattr(self.config, 'debug') and self.config.debug:

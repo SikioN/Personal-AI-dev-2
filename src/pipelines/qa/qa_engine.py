@@ -290,6 +290,29 @@ class QAEngine:
         )
         t4 = time.perf_counter()
 
+        # Fallback retry: if LLM returned Unknown on first pass, expand context and retry once.
+        # Uses all_scored[:top_k*2] so no extra retrieval/scoring needed.
+        if generation.answer == 'Unknown' and len(scoring.all_scored) > len(scoring.selected_quads):
+            fallback_quads = [r.quad for r in scoring.all_scored[:top_k * 2]]
+            _fallback_prompt = (
+                "You are a knowledge base QA system. "
+                "The answer IS present in the facts below — look carefully. "
+                "Answer ONLY based on the provided FACTS in the same language as the question. "
+                "Step 1: Identify what value the question asks for. "
+                "Step 2: Find the fact whose Subject and Relation best match the question. "
+                "Step 3: Extract the exact value from that fact. "
+                "Output ONLY the value (number, phrase, or year). "
+                "If truly not found after careful review: output NULL."
+            )
+            generation_retry = self._generation_stage.run(
+                question, fallback_quads, extraction, retrieval,
+                system_prompt_override=_fallback_prompt,
+            )
+            if generation_retry.answer and generation_retry.answer != 'Unknown':
+                logger.info("[ask_full] fallback retry succeeded: %r", generation_retry.answer)
+                generation = generation_retry
+            t4 = time.perf_counter()
+
         logger.info(
             "[ask_full] extraction=%.3fs retrieval=%.3fs scoring=%.3fs generation=%.3fs total=%.3fs",
             t1 - t0, t2 - t1, t3 - t2, t4 - t3, t4 - t0,
