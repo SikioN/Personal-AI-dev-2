@@ -77,25 +77,30 @@ def _read_benchmark_filenames(excel_path: str) -> list[str]:
     return names
 
 
+_SUPPORTED_EXT = {'.pdf', '.txt', '.docx', '.pptx'}
+
+
 def _match_pdfs(docs_dir: str, benchmark_names: list[str]) -> tuple[list[str], list[str]]:
     """
-    For each benchmark name, find the matching PDF in docs_dir (by basename).
+    For each benchmark name, find the matching file in docs_dir (by basename, any supported ext).
     Returns (found_paths, missing_names).
     """
-    # Build index: stem (no ext) → full path
+    # Build index: stem (no ext) → full path, and full filename → full path
     index: dict[str, str] = {}
     for dirpath, _, files in os.walk(docs_dir):
         for fname in files:
-            if Path(fname).suffix.lower() == '.pdf':
+            if Path(fname).suffix.lower() in _SUPPORTED_EXT:
                 stem = Path(fname).stem.lower()
-                index[stem] = os.path.join(dirpath, fname)
-                # Also index by full name with extension
-                index[fname.lower()] = os.path.join(dirpath, fname)
+                full_path = os.path.join(dirpath, fname)
+                # stem without extension (highest priority — matches regardless of ext)
+                if stem not in index:
+                    index[stem] = full_path
+                # full filename with extension
+                index[fname.lower()] = full_path
 
     found: list[str] = []
     missing: list[str] = []
     for name in benchmark_names:
-        # Try exact match (with or without .pdf)
         key = name.lower()
         key_stem = Path(name).stem.lower()
         if key in index:
