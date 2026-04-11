@@ -10,13 +10,13 @@ _ANON_SYS_DEFAULT = (
     "FACT FORMAT: '- Subject → Relation → Object (Year: YYYY)'\n"
     "Rules:\n"
     "- Step 1: Identify what the question asks for (a number, percentage, year, name, or phrase).\n"
-    "- Step 2: Find the fact whose Subject AND Relation most closely match the question topic. "
-    "If multiple facts conflict, prefer the one whose year matches the question; "
-    "if no year match, prefer facts marked 'Always' (timeless).\n"
-    "- Step 3: Output your final answer wrapped in <answer> tags. "
-    "Example: <answer>58%</answer> or <answer>2024</answer>.\n"
+    "- Step 2: Find the fact whose Subject AND Relation most closely match the question topic.\n"
+    "- Step 3: If multiple facts have conflicting values, prefer the one whose year EXACTLY "
+    "matches the question. If no exact year match, prefer facts marked 'Always' (timeless).\n"
+    "- Answer with a specific value, number, or short phrase from the chosen fact.\n"
+    "- For year/date questions: output ONLY the year or range (e.g. '2024' or '2020 - 2024').\n"
     "- Do NOT use external knowledge.\n"
-    "- If the facts do not contain the answer: <answer>NULL</answer>"
+    "- If the provided facts do not contain the answer: output NULL."
 )
 
 

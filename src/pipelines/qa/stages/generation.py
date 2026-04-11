@@ -57,10 +57,9 @@ class GenerationStage:
                     return label
         return name or node.id or '?'
 
-    _MAX_CTX_CHARS = 6000   # conservative limit (~8k tokens)
-    _MAX_CTX_CHARS_RETRY = 12000  # expanded limit for fallback retry pass
+    _MAX_CTX_CHARS = 6000  # conservative limit (~8k tokens)
 
-    def _build_anon_ctx(self, quads: List[Quadruplet], ctx_limit: int = _MAX_CTX_CHARS) -> str:
+    def _build_anon_ctx(self, quads: List[Quadruplet]) -> str:
         """Build readable context from quadruplets for the LLM."""
         lines, seen = [], set()
         for q in quads:
@@ -72,18 +71,11 @@ class GenerationStage:
             if sig not in seen:
                 seen.add(sig)
                 source = (q.relation.prop or {}).get('source', '')
-                if source:
-                    # Truncate long PDF filenames to avoid eating context budget
-                    short_src = source.replace('.pdf', '')[:30]
-                    if len(source) > 34:
-                        short_src += '...'
-                    source_str = f" [Source: {short_src}]"
-                else:
-                    source_str = ""
+                source_str = f" [Source: {source}]" if source else ""
                 lines.append(f'- {s} → {r} → {o} (Year: {t}){source_str}')
         ctx = '\n'.join(lines)
-        if len(ctx) > ctx_limit:
-            ctx = ctx[:ctx_limit] + "\n... [context truncated]"
+        if len(ctx) > self._MAX_CTX_CHARS:
+            ctx = ctx[:self._MAX_CTX_CHARS] + "\n... [context truncated]"
         return ctx
 
     @staticmethod
@@ -108,11 +100,9 @@ class GenerationStage:
         extraction: "ExtractionResult",
         retrieval: "RetrievalResult",
         system_prompt_override: Optional[str] = None,
-        expand_ctx: bool = False,
     ) -> GenerationResult:
         try:
-            ctx_limit = self._MAX_CTX_CHARS_RETRY if expand_ctx else self._MAX_CTX_CHARS
-            ctx = self._build_anon_ctx(selected_quads, ctx_limit=ctx_limit)
+            ctx = self._build_anon_ctx(selected_quads)
 
             answer_type = extraction.answer_type
             q_type = extraction.q_type
@@ -151,36 +141,32 @@ class GenerationStage:
                 t = text.strip().lower()
                 return not t or any(tok in t for tok in _null_tokens)
 
-            # Extract answer from <answer>…</answer> tags (CoT output isolation).
-            # If the LLM did not emit tags, fall back to the raw stripped output.
-            _tag_match = re.search(r'<answer>(.*?)</answer>', raw_ans, re.IGNORECASE | re.DOTALL)
-            extracted = _tag_match.group(1).strip() if _tag_match else raw_ans.strip()
-
             if answer_type == 'year' or q_type == 'simple_time':
-                if _is_null(extracted):
+                if _is_null(raw_ans):
                     answer = 'Unknown'
                 else:
-                    year = self._extract_year(extracted)
+                    year = self._extract_year(raw_ans)
                     if year:
                         answer = year
                     else:
-                        answer = extracted or 'Unknown'
+                        answer = raw_ans.strip() or 'Unknown'
             else:
-                if _is_null(extracted):
+                stripped = raw_ans.strip()
+                if _is_null(stripped):
                     answer = 'Unknown'
                 else:
                     # If LLM returned a raw Wikidata Q-ID (legacy fallback), decode it
-                    qid = self._decode_qid(extracted)
+                    qid = self._decode_qid(stripped)
                     if qid:
                         label = self.mapper.get_label_with_id(qid)
                         if label and not self._ID_RE.match(label):
                             answer = label
                         else:
-                            answer = extracted
+                            answer = stripped
                     else:
-                        answer = extracted
+                        answer = stripped
 
-            decoded_qid = self._decode_qid(extracted)
+            decoded_qid = self._decode_qid(raw_ans)
             return GenerationResult(
                 answer=answer,
                 raw_llm_output=raw_ans,
