@@ -216,9 +216,12 @@ def main() -> None:
         sys.exit(0)
 
     # ── Ensure output directories exist ───────────────────────────────────────
-    for subdir in ['kuzu_db', os.path.join('chroma', 'nodes', 'default'),
+    # NOTE: kuzu_db must NOT be pre-created as a directory — KuzuDB creates it itself
+    for subdir in [os.path.join('chroma', 'nodes', 'default'),
                    os.path.join('chroma', 'quads', 'default'), 'tcomplex']:
         Path(os.path.join(out_dir, subdir)).mkdir(parents=True, exist_ok=True)
+    # Only ensure the parent of kuzu_db exists, not kuzu_db itself
+    Path(os.path.join(out_dir, 'kuzu_db')).parent.mkdir(parents=True, exist_ok=True)
 
     # ── Initialize DocIngestionService (uses sandbox paths via env) ───────────
     _info("Initialising KG model for sandbox DB...")
