@@ -2,12 +2,12 @@ import os
 import sys
 import json
 import logging
-import torch
 import datetime
 
 LOGGER = logging.getLogger(__name__)
 
 def init_logger(args, stdout_only=False):
+    import torch
     if torch.distributed.is_initialized():
         torch.distributed.barrier()
     stdout_handler = logging.StreamHandler(sys.stdout)
