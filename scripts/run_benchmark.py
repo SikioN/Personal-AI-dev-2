@@ -57,9 +57,18 @@ def main():
         try:
             answer, ranked = engine.ask_full(q, top_k=args.top_k)
             confidence = ranked[0]['confidence'] if ranked else 0.0
-            top3 = [r['text'] for r in ranked[:5] if r.get('_used_by_llm')]
+
+            def _clean(text: str) -> str:
+                """Remove wd_id noise so facts are readable."""
+                import re as _re2
+                text = _re2.sub(r'\s*\(wd_id:[^)]+\)', '', text)
+                text = _re2.sub(r'\s*\(time_name:[^)]+\)', '', text)
+                return text.strip()
+
+            llm_facts = [r for r in ranked if r.get('_used_by_llm')]
+            top3 = [_clean(r['text']) for r in llm_facts[:5]]
             if not top3:
-                top3 = [r['text'] for r in ranked[:5]]
+                top3 = [_clean(r['text']) for r in ranked[:5]]
         except Exception as e:
             answer = f'ERROR: {e}'
             confidence = 0.0
