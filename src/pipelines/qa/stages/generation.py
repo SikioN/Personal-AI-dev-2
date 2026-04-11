@@ -57,8 +57,8 @@ class GenerationStage:
                     return label
         return name or node.id or '?'
 
-    _MAX_CTX_CHARS = 10000  # increased to surface more facts per LLM call
-    _MAX_CTX_CHARS_RETRY = 16000  # expanded limit for fallback retry pass
+    _MAX_CTX_CHARS = 6000   # conservative limit (~8k tokens)
+    _MAX_CTX_CHARS_RETRY = 12000  # expanded limit for fallback retry pass
 
     def _build_anon_ctx(self, quads: List[Quadruplet], ctx_limit: int = _MAX_CTX_CHARS) -> str:
         """Build readable context from quadruplets for the LLM."""

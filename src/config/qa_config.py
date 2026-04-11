@@ -9,20 +9,14 @@ _ANON_SYS_DEFAULT = (
     "Questions may be in Russian or English — answer in the same language as the question. "
     "FACT FORMAT: '- Subject → Relation → Object (Year: YYYY)'\n"
     "Rules:\n"
-    "- Step 1: Identify what the question asks for — the SPECIFIC METRIC and its CONTEXT "
-    "(e.g. '37% of what exactly?', '58% of whom?', 'which company/person/region?'). "
-    "Extract both the number AND the semantic topic/entity.\n"
-    "- Step 2: Find the fact that matches BOTH the number AND the semantic context. "
-    "REJECT facts that share the same number but describe a different entity or metric "
-    "(e.g. if the question is about '37% of GDP (ВВП)', reject a fact about '37% of companies'; "
-    "if the question is about '58% of executives (руководителей)', reject '58 million users'). "
+    "- Step 1: Identify what the question asks for (a number, percentage, year, name, or phrase).\n"
+    "- Step 2: Find the fact whose Subject AND Relation most closely match the question topic. "
     "If multiple facts conflict, prefer the one whose year matches the question; "
     "if no year match, prefer facts marked 'Always' (timeless).\n"
-    "- Step 3: In one sentence state which fact you chose and why, then wrap the final answer "
-    "in <answer> tags. "
-    "Example: 'Fact about women contributing to global GDP matches → <answer>37%</answer>'\n"
+    "- Step 3: Output your final answer wrapped in <answer> tags. "
+    "Example: <answer>58%</answer> or <answer>2024</answer>.\n"
     "- Do NOT use external knowledge.\n"
-    "- If no fact matches BOTH the number AND the topic: <answer>NULL</answer>"
+    "- If the facts do not contain the answer: <answer>NULL</answer>"
 )
 
 
@@ -40,8 +34,8 @@ class QAConfig:
     min_tl_count: int = 2
     confidence_gap: float = 0.20       # P3 gap-based selection threshold
     min_facts: int = 2
-    max_facts: int = 20
-    search_k_floor: int = 40
+    max_facts: int = 12
+    search_k_floor: int = 15
     search_k_exp: float = 0.55
     tcomplex_alpha: float = 0.5
 

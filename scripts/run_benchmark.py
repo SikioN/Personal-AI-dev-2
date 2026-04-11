@@ -18,7 +18,7 @@ load_dotenv()
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--excel', default='simple_questions_39_final_2025.xlsx')
-    parser.add_argument('--top-k', type=int, default=20)
+    parser.add_argument('--top-k', type=int, default=12)
     parser.add_argument('--out', default='benchmark_results.csv')
     args = parser.parse_args()
 
@@ -73,49 +73,16 @@ def main():
             s = _re.sub(r'[%\s]', '', s.strip().lower())
             return s.replace(',', '.')
 
-        _APPROX = _re.compile(
-            r'\b(до|около|примерно|свыше|более|менее|порядка|about|up to|over|nearly|approximately)\s*',
-            _re.IGNORECASE,
-        )
-        _TRANSLATIONS = {
-            'professor': 'профессор', 'ceo': 'генеральный директор',
-            'director': 'директор', 'vice president': 'вице-президент',
-            'president': 'президент', 'founder': 'основатель',
-        }
-
         exp_l = expected.strip().lower()
         got_l = str(answer).strip().lower()
-
         if got_l in ('unknown', 'null', 'none', ''):
             label = 'unknown'
         elif exp_l in got_l or got_l in exp_l:
             label = 'correct'
         else:
-            label = 'wrong'
-            # 1. Нормализация чисел (%, пробелы-разделители, запятая→точка)
             exp_n = _normalize_number(expected)
             got_n = _normalize_number(str(answer))
-            if exp_n and got_n and (exp_n in got_n or got_n in exp_n):
-                label = 'correct'
-            # 2. Убрать предлоги приближения ("около 100" ≈ "до 100")
-            if label == 'wrong':
-                exp_a = _APPROX.sub('', exp_l).strip()
-                got_a = _APPROX.sub('', got_l).strip()
-                if exp_a and (exp_a in got_a or got_a in exp_a):
-                    label = 'correct'
-            # 3. Все числа совпадают (независимо от слов-обёрток)
-            if label == 'wrong':
-                exp_nums = set(_re.findall(r'\d+(?:[.,]\d+)?', exp_l))
-                got_nums = set(_re.findall(r'\d+(?:[.,]\d+)?', got_l))
-                if exp_nums and exp_nums == got_nums:
-                    label = 'correct'
-            # 4. Перевод EN↔RU ключевых слов
-            if label == 'wrong':
-                exp_tr = exp_l
-                for en, ru in _TRANSLATIONS.items():
-                    exp_tr = exp_tr.replace(en, ru)
-                if exp_tr in got_l or got_l in exp_tr:
-                    label = 'correct'
+            label = 'correct' if exp_n and got_n and (exp_n in got_n or got_n in exp_n) else 'wrong'
 
         icon = '✓' if label == 'correct' else ('?' if label == 'unknown' else '✗')
         print(f'       {icon} Expected: {expected!r:30s}  Got: {str(answer)!r:30s}  [{confidence:.2f}]')

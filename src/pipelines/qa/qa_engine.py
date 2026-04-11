@@ -256,21 +256,20 @@ class QAEngine:
             question, scoring.selected_quads, extraction, retrieval
         )
 
-        # Pass 2: if Unknown, expand context window and retry unconditionally
-        _fallback_prompt = (
-            "You are a knowledge base QA system. "
-            "Answer ONLY based on the provided FACTS in the same language as the question. "
-            "Step 1: Identify what value the question asks for (number, percentage, name, phrase). "
-            "Step 2: Find the fact whose Subject and Relation best match the question topic. "
-            "IMPORTANT: if the exact number is not present but a closely related fact exists, "
-            "report what you find rather than saying NULL. "
-            "Step 3: Output the answer wrapped in <answer> tags. "
-            "Example: <answer>58%</answer> or <answer>2024</answer>. "
-            "Only say <answer>NULL</answer> if there is NO fact even loosely related to the topic."
-        )
-        if generation.answer == 'Unknown':
+        # Fallback retry: if Unknown, expand to top_k*2 facts and retry once
+        if generation.answer == 'Unknown' and len(scoring.all_scored) > len(scoring.selected_quads):
             print('  [FALLBACK] Unknown on first pass — retrying with expanded context...')
-            fallback_quads = [r.quad for r in scoring.all_scored[:top_k * 2]] or scoring.selected_quads
+            fallback_quads = [r.quad for r in scoring.all_scored[:top_k * 2]]
+            _fallback_prompt = (
+                "You are a knowledge base QA system. "
+                "The answer IS present in the facts below — look carefully. "
+                "Answer ONLY based on the provided FACTS in the same language as the question. "
+                "Step 1: Identify what value the question asks for. "
+                "Step 2: Find the fact whose Subject and Relation best match the question. "
+                "Step 3: Output the exact value wrapped in <answer> tags. "
+                "Example: <answer>58%</answer> or <answer>2024</answer>. "
+                "If truly not found after careful review: <answer>NULL</answer>"
+            )
             generation_retry = self._generation_stage.run(
                 question, fallback_quads, extraction, retrieval,
                 system_prompt_override=_fallback_prompt,
@@ -279,26 +278,6 @@ class QAEngine:
             if generation_retry.answer and generation_retry.answer != 'Unknown':
                 print(f'  [FALLBACK] Retry succeeded: {generation_retry.answer!r}')
                 generation = generation_retry
-
-        # Pass 3: if still Unknown, retry with entity-focused query retrieval
-        if generation.answer == 'Unknown' and extraction.entities:
-            entity_query = ' '.join(extraction.entities)
-            if entity_query.strip() and entity_query.strip().lower() != question.strip().lower():
-                print(f'  [FALLBACK-3] Entity-query retry: {entity_query!r}')
-                retrieval2 = self._retrieval_stage.run(entity_query, extraction)
-                if retrieval2.unique_candidates:
-                    scoring2 = self._scoring_stage.run(question, retrieval2, extraction)
-                    seen_ids = {r.quad.id for r in scoring.all_scored}
-                    extra_quads = [r.quad for r in scoring2.all_scored if r.quad.id not in seen_ids]
-                    merged_quads = [r.quad for r in scoring.all_scored] + extra_quads
-                    generation_retry3 = self._generation_stage.run(
-                        question, merged_quads[:top_k * 2], extraction, retrieval2,
-                        system_prompt_override=_fallback_prompt,
-                        expand_ctx=True,
-                    )
-                    if generation_retry3.answer and generation_retry3.answer != 'Unknown':
-                        print(f'  [FALLBACK-3] Entity-retry succeeded: {generation_retry3.answer!r}')
-                        generation = generation_retry3
 
         timings['generate'] = round(_time.time() - t_s, 2)
 
@@ -335,55 +314,29 @@ class QAEngine:
         )
         t4 = time.perf_counter()
 
-        # Pass 2: if LLM returned Unknown on first pass, expand context window and retry.
-        # Fix: removed the `len(all_scored) > len(selected)` gate — retry fires unconditionally
-        # whenever answer is Unknown so we don't silently skip when all candidates fit in selection.
-        _fallback_prompt = (
-            "You are a knowledge base QA system. "
-            "Answer ONLY based on the provided FACTS in the same language as the question. "
-            "Step 1: Identify what value the question asks for (number, percentage, name, phrase). "
-            "Step 2: Find the fact whose Subject and Relation best match the question topic. "
-            "IMPORTANT: if the exact number is not present but a closely related fact exists, "
-            "report what you find rather than saying NULL. "
-            "Step 3: Output the answer wrapped in <answer> tags. "
-            "Example: <answer>58%</answer> or <answer>2024</answer>. "
-            "Only say <answer>NULL</answer> if there is NO fact even loosely related to the topic."
-        )
-        if generation.answer == 'Unknown':
-            fallback_quads = [r.quad for r in scoring.all_scored[:top_k * 2]] or scoring.selected_quads
+        # Fallback retry: if LLM returned Unknown on first pass, expand context and retry once.
+        # Uses all_scored[:top_k*2] so no extra retrieval/scoring needed.
+        if generation.answer == 'Unknown' and len(scoring.all_scored) > len(scoring.selected_quads):
+            fallback_quads = [r.quad for r in scoring.all_scored[:top_k * 2]]
+            _fallback_prompt = (
+                "You are a knowledge base QA system. "
+                "The answer IS present in the facts below — look carefully. "
+                "Answer ONLY based on the provided FACTS in the same language as the question. "
+                "Step 1: Identify what value the question asks for. "
+                "Step 2: Find the fact whose Subject and Relation best match the question. "
+                "Step 3: Output the exact value wrapped in <answer> tags. "
+                "Example: <answer>58%</answer> or <answer>2024</answer>. "
+                "If truly not found after careful review: <answer>NULL</answer>"
+            )
             generation_retry = self._generation_stage.run(
                 question, fallback_quads, extraction, retrieval,
                 system_prompt_override=_fallback_prompt,
                 expand_ctx=True,
             )
             if generation_retry.answer and generation_retry.answer != 'Unknown':
-                logger.info("[ask_full] pass-2 retry succeeded: %r", generation_retry.answer)
+                logger.info("[ask_full] fallback retry succeeded: %r", generation_retry.answer)
                 generation = generation_retry
-
-        # Pass 3: if still Unknown, do a second RETRIEVAL pass with entity-focused keyword query.
-        # This catches cases where the original question wording confuses the embedder but the
-        # entity name alone maps to the right facts (e.g. "Satya Nadella задача" → "Satya Nadella").
-        if generation.answer == 'Unknown' and extraction.entities:
-            entity_query = ' '.join(extraction.entities)
-            if entity_query.strip() and entity_query.strip().lower() != question.strip().lower():
-                logger.info("[ask_full] pass-3 entity-query retrieval: %r", entity_query)
-                retrieval2 = self._retrieval_stage.run(entity_query, extraction)
-                if retrieval2.unique_candidates:
-                    scoring2 = self._scoring_stage.run(question, retrieval2, extraction)
-                    # Merge: prefer original facts, add new ones not already seen
-                    seen_ids = {r.quad.id for r in scoring.all_scored}
-                    extra_quads = [r.quad for r in scoring2.all_scored if r.quad.id not in seen_ids]
-                    merged_quads = [r.quad for r in scoring.all_scored] + extra_quads
-                    generation_retry3 = self._generation_stage.run(
-                        question, merged_quads[:top_k * 2], extraction, retrieval2,
-                        system_prompt_override=_fallback_prompt,
-                        expand_ctx=True,
-                    )
-                    if generation_retry3.answer and generation_retry3.answer != 'Unknown':
-                        logger.info("[ask_full] pass-3 entity-retry succeeded: %r", generation_retry3.answer)
-                        generation = generation_retry3
-
-        t4 = time.perf_counter()
+            t4 = time.perf_counter()
 
         logger.info(
             "[ask_full] extraction=%.3fs retrieval=%.3fs scoring=%.3fs generation=%.3fs total=%.3fs",
