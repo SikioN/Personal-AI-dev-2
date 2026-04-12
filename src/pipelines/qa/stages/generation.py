@@ -166,6 +166,16 @@ class GenerationStage:
                     else:
                         answer = stripped
 
+            # Safety net: if LLM copied the full fact string "S → R → O", extract R + O
+            if ' → ' in answer:
+                parts = [re.sub(r'\s*\(Year:[^)]+\)', '', p).strip()
+                         for p in answer.split(' → ')]
+                parts = [p for p in parts if p]
+                if len(parts) >= 3:
+                    answer = f"{parts[1]} {parts[2]}".strip()
+                elif len(parts) == 2:
+                    answer = parts[1] or parts[0]
+
             decoded_qid = self._decode_qid(raw_ans)
             return GenerationResult(
                 answer=answer,

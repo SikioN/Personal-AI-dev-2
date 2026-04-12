@@ -19,7 +19,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--excel', default='simple_questions_39_final_2025.xlsx')
     parser.add_argument('--top-k', type=int, default=12)
-    parser.add_argument('--out', default='benchmark_results.csv')
+    parser.add_argument('--out', default=None,
+                        help='Output CSV path (default: benchmark_results_YYYYMMDD_HHMMSS.csv)')
     # Path overrides for sandbox / benchmark DB
     parser.add_argument('--kuzu-path',     default=None, help='Override KUZU_PATH')
     parser.add_argument('--chroma-nodes',  default=None, help='Override CHROMA_NODES_PATH')
@@ -38,6 +39,12 @@ def main():
     if args.tcomplex_ckpt: os.environ['TCOMPLEX_CHECKPOINT'] = args.tcomplex_ckpt
     if args.tcomplex_data: os.environ['TCOMPLEX_DATA_PATH']  = args.tcomplex_data
     if args.max_facts:     os.environ['QA_MAX_FACTS']        = str(args.max_facts)
+
+    # Auto-generate timestamped output filename if not specified
+    if args.out is None:
+        from datetime import datetime
+        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+        args.out = f'benchmark_results_{ts}.csv'
 
     # ── Load engine ────────────────────────────────────────────────────────────
     print('Loading QA engine...')

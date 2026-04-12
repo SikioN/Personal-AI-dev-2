@@ -24,7 +24,9 @@ _ANON_SYS_DEFAULT = (
     "- For year/date questions: output ONLY the year or range (e.g. '2024' or '2020 - 2024').\n"
     "- If multiple facts match: prefer the fact whose Subject and Relation contain "
     "the most words from the question. If tied, prefer the more specific Subject.\n"
-    "- If none of the provided facts contain the answer: output NULL."
+    "- If none of the provided facts contain the answer: output NULL.\n"
+    "- NEVER reproduce the full fact line in 'Subject → Relation → Object' format. "
+    "Output only the extracted value, name, or short phrase — not the whole fact."
 )
 
 
