@@ -83,9 +83,9 @@ def main():
                 return text.strip()
 
             llm_facts = [r for r in ranked if r.get('_used_by_llm')]
-            top3 = [_clean(r['text']) for r in llm_facts[:5]]
+            top3 = [_clean(r['text']) for r in llm_facts]
             if not top3:
-                top3 = [_clean(r['text']) for r in ranked[:5]]
+                top3 = [_clean(r['text']) for r in ranked[:10]]
         except Exception as e:
             answer = f'ERROR: {e}'
             confidence = 0.0
