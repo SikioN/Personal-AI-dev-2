@@ -239,17 +239,36 @@ EXTRACTION_SYSTEM = """You are a knowledge graph construction expert.
 Extract factual quadruplets (subject, relation, object, time) from the text.
 
 Rules:
-1. Subject and Object must be named entities (persons, organizations, places, works, concepts).
-2. Relation must be a short descriptive label (e.g. "employer", "member of", "has part", "regulates", "approved by").
-3. Time: use years only. If exact year unknown, omit. Format: {"start": "YYYY", "end": "YYYY"}.
-   If a single year, set start == end. If open-ended (still active), use current year as end.
+1. Subject must be a named entity (person, organization, place, product, concept, technology, industry, demographic group).
+   Object can be: a named entity, a numeric value/percentage, a quoted statistic, a list of qualities, or a short descriptive phrase.
+   Neither Subject nor Object may be empty.
+2. Relation must be a short descriptive Russian phrase expressing the factual link
+   (e.g. "является директором", "входит в состав", "чистая прибыль составила", "может устранить", "требует понимания").
+3. Time: use years only. If exact year unknown, leave t_start and t_end as empty strings.
+   If a single year, set t_start == t_end. If a range, use t_start and t_end accordingly.
+   If open-ended (still active), use current year as t_end.
 4. Output ONLY a valid JSON object with a single key "quadruplets" containing the array.
-5. Language: Relations MUST be in Russian since source texts are in Russian. Use short Russian phrases (e.g. "является директором", "входит в состав", "чистая прибыль составила"). Subject and Object names: preserve original form from the text.
+5. Language: Relations MUST be in Russian. Preserve Subject and Object names in their original form from the text.
+6. Extract ALL of the following fact types — do not skip them:
+   A) Statistics & percentages: Object = the number or percentage.
+      Example: {"s": "CEO лучших компаний", "r": "тратит времени на внешних стейкхолдеров", "o": "30%", "t_start": "", "t_end": ""}
+      Example: {"s": "существующие технологии", "r": "могут устранить выбросы метана", "o": "80-90%", "t_start": "", "t_end": ""}
+      Example: {"s": "центры обработки данных США", "r": "рост потребления воды", "o": "170%", "t_start": "", "t_end": "2030"}
+   B) Qualitative facts (advantages, properties, characteristics): Object = list of qualities.
+      Example: {"s": "eSSD", "r": "превосходит HDD по характеристикам", "o": "скорость, надёжность, энергоэффективность", "t_start": "", "t_end": ""}
+      Example: {"s": "предметы быстрой моды из дешёвого сегмента", "r": "носят в среднем", "o": "7 раз", "t_start": "", "t_end": ""}
+   C) Forecast, potential, and capability facts: capture future projections and potential benefits.
+      Example: {"s": "GenAI", "r": "принесёт ежегодную пользу фарма-индустрии", "o": "более $50 млрд", "t_start": "", "t_end": ""}
+      Example: {"s": "цифровые решения", "r": "сокращают время разработки продукта", "o": "20%", "t_start": "", "t_end": ""}
+   D) Requirements and skill facts: what a role or entity must understand/possess.
+      Example: {"s": "специалисты R&D медтех", "r": "должны понимать", "o": "рабочие процессы больниц и потребности пациентов", "t_start": "", "t_end": ""}
+   E) Preferences and behavioral facts.
+      Example: {"s": "швейцарские потребители", "r": "предпочитают", "o": "сайты одного продавца, а не маркетплейсы", "t_start": "", "t_end": ""}
 
 Output format (strict JSON):
 {
   "quadruplets": [
-    {"s": "Subject Name", "r": "relation label", "o": "Object Name", "t_start": "YYYY", "t_end": "YYYY"}
+    {"s": "Subject Name", "r": "relation label", "o": "Object or Value", "t_start": "YYYY", "t_end": "YYYY"}
   ]
 }
 
