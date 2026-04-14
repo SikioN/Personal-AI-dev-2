@@ -104,7 +104,10 @@ class DeepSeekClient(BaseLLMClient):
             response = requests.post(self.API_URL, headers=headers, json=payload, timeout=30)
             response.raise_for_status()
             data = response.json()
-            return data["choices"][0]["message"]["content"]
+            content = data["choices"][0]["message"]["content"]
+            # Strip <think>...</think> blocks produced by reasoning models (DeepSeek-R1)
+            content = re.sub(r'<think>[\s\S]*?</think>', '', content).strip()
+            return content
         except (requests.RequestException, KeyError, IndexError) as e:
             self.logger.error(f"[DeepSeek] API error: {e}")
             return ""
