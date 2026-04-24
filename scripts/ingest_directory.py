@@ -32,10 +32,18 @@ NC     = '\033[0m'
 
 DIVIDER = f"{BOLD}{'═' * 58}{NC}"
 
-def _ok(msg: str)   -> None: print(f"  {GREEN}[OK]{NC}  {msg}")
-def _warn(msg: str) -> None: print(f"  {YELLOW}[WARN]{NC} {msg}")
-def _err(msg: str)  -> None: print(f"  {RED}[ERR]{NC}  {msg}")
-def _info(msg: str) -> None: print(f"  [--]  {msg}")
+_active_bar = None
+
+def _print_smart(msg: str) -> None:
+    if _active_bar:
+        _active_bar.write(msg)
+    else:
+        print(msg)
+
+def _ok(msg: str)   -> None: _print_smart(f"  {GREEN}[OK]{NC}  {msg}")
+def _warn(msg: str) -> None: _print_smart(f"  {YELLOW}[WARN]{NC} {msg}")
+def _err(msg: str)  -> None: _print_smart(f"  {RED}[ERR]{NC}  {msg}")
+def _info(msg: str) -> None: _print_smart(f"  [--]  {msg}")
 
 
 # ─── GPU tier table ───────────────────────────────────────────────────────────
@@ -173,11 +181,27 @@ def main() -> None:
     from dotenv import load_dotenv
     load_dotenv()
 
-    logging.basicConfig(level=logging.WARNING, format='%(levelname)s %(message)s')
-    # Silence verbose library loggers — the script drives its own UX
+    # ── Logging ───────────────────────────────────────────────────────────────
+    # Route all logging to a file to avoid interrupting the tqdm progress bar.
+    # Standard output is reserved for our clean terminal UX.
+    log_dir = Path("logs")
+    log_dir.mkdir(exist_ok=True)
+    log_file = log_dir / "ingestion.log"
+    
+    fh = logging.FileHandler(log_file, encoding="utf-8")
+    fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s | %(message)s"))
+    
+    root_logger = logging.getLogger()
+    root_logger.handlers.clear()
+    root_logger.addHandler(fh)
+    root_logger.setLevel(logging.INFO)
+
+    # Silence verbose library loggers
     for _log in ('src', 'extract', 'chromadb', 'kuzu', 'sentence_transformers',
-                 'transformers', 'urllib3', 'httpx'):
+                 'transformers', 'urllib3', 'httpx', 'httpcore', 'openai'):
         logging.getLogger(_log).setLevel(logging.ERROR)
+
+    _info(f"Logging to {log_file}")
 
     # ── Device banner ─────────────────────────────────────────────────────────
     gpu_profile = _detect_gpu_profile()
@@ -286,8 +310,30 @@ def main() -> None:
                 files_fail += 1
             _warn(f"Skipped {fname}: {exc}")
 
+    try:
+        from tqdm import tqdm as _tqdm
+        _use_tqdm = True
+    except ImportError:
+        _use_tqdm = False
+
+    global _active_bar
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
-        list(pool.map(_process_one, valid_files))
+        futures = {pool.submit(_process_one, fp): fp for fp in valid_files}
+        if _use_tqdm:
+            _active_bar = _tqdm(
+                concurrent.futures.as_completed(futures),
+                total=len(futures),
+                desc='  Документы',
+                unit='doc',
+                ncols=80,
+            )
+            for _ in _active_bar:
+                _active_bar.set_postfix(ok=files_ok, fail=files_fail, facts=len(all_quads))
+            _active_bar.close()
+            _active_bar = None
+        else:
+            for _ in concurrent.futures.as_completed(futures):
+                pass
 
     elapsed1 = time.time() - t1
     print()

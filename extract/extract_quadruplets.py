@@ -212,6 +212,7 @@ def _load_processed_manifest() -> None:
         log.info(f"Manifest: {len(_processed_manifest)} already-processed file(s)")
 
 def _save_processed_manifest() -> None:
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     tmp = PROCESSED_MANIFEST_FILE + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(_processed_manifest, f, ensure_ascii=False, indent=2)
